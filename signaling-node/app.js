@@ -1,18 +1,19 @@
 const express = require("express");
 const http = require("http");
-const socketIo = require("socket.io");
+// const socketIo = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
+// const io = socketIo(server, {
+//   cors: {
+//     origin: "*",
+//     methods: ["GET", "POST"],
+//   },
+// });
 
 const rooms = {}; // Store room information
 let clients = [];
+let sessions = {};
 let facts = ["hello"];
 
 function eventsHandler(request, response, next) {
@@ -81,60 +82,59 @@ async function sendOffer(request, response) {
 
 app.post("/events", eventsHandler);
 
-app.post("/send-offer", sendOffer);
+app.post("/", sendOffer);
 //
 // app.post("/send-answer", sendAnswer);
 
-io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id}`);
-
-  socket.on("join-room", (roomID) => {
-    console.log({ event: "join-room", roomID });
-    if (rooms[roomID]) {
-      rooms[roomID].push(socket.id);
-    } else {
-      rooms[roomID] = [socket.id];
-    }
-
-    const otherUser = rooms[roomID].find((id) => id !== socket.id);
-    if (otherUser) {
-      socket.emit("other-user", otherUser);
-      socket.to(otherUser).emit("user-joined", socket.id);
-    }
-
-    rooms[roomID].forEach((id) => {
-      io.to(id).emit("user-connected", socket.id);
-    });
-  });
-
-  socket.on("disconnect", () => {
-    console.log(`User disconnected: ${socket.id}`);
-    const roomID = Object.keys(rooms).find((key) =>
-      rooms[key].includes(socket.id),
-    );
-    if (roomID) {
-      rooms[roomID] = rooms[roomID].filter((id) => id !== socket.id);
-      rooms[roomID].forEach((id) => {
-        io.to(id).emit("user-disconnected", socket.id);
-      });
-    }
-  });
-
-  socket.on("offer", (payload) => {
-    console.log({ eventType: "offer", payload });
-    io.to(payload.target).emit("offer", payload);
-  });
-
-  socket.on("answer", (payload) => {
-    console.log({ eventType: "answer", payload });
-    io.to(payload.target).emit("answer", payload);
-  });
-
-  socket.on("ice-candidate", (incoming) => {
-    console.log({ eventType: "ice-candidate", incoming });
-    io.to(incoming.target).emit("ice-candidate", incoming);
-  });
-});
+// io.on("connection", (socket) => {
+//   console.log(`User connected: ${socket.id}`);
+//
+//   socket.on("join-room", (roomID) => {
+//     console.log({ event: "join-room", roomID });
+//     if (rooms[roomID]) {
+//       rooms[roomID].push(socket.id);
+//     } else {
+//       rooms[roomID] = [socket.id];
+//     }
+//
+//     const otherUser = rooms[roomID].find((id) => id !== socket.id);
+//     if (otherUser) {
+//       socket.emit("other-user", otherUser);
+//       socket.to(otherUser).emit("user-joined", socket.id);
+//     }
+//
+//     rooms[roomID].forEach((id) => {
+//       io.to(id).emit("user-connected", socket.id);
+//     });
+//   });
+//
+//   socket.on("disconnect", () => {
+//     console.log(`User disconnected: ${socket.id}`); const roomID = Object.keys(rooms).find((key) =>
+//       rooms[key].includes(socket.id),
+//     );
+//     if (roomID) {
+//       rooms[roomID] = rooms[roomID].filter((id) => id !== socket.id);
+//       rooms[roomID].forEach((id) => {
+//         io.to(id).emit("user-disconnected", socket.id);
+//       });
+//     }
+//   });
+//
+//   socket.on("offer", (payload) => {
+//     console.log({ eventType: "offer", payload });
+//     io.to(payload.target).emit("offer", payload);
+//   });
+//
+//   socket.on("answer", (payload) => {
+//     console.log({ eventType: "answer", payload });
+//     io.to(payload.target).emit("answer", payload);
+//   });
+//
+//   socket.on("ice-candidate", (incoming) => {
+//     console.log({ eventType: "ice-candidate", incoming });
+//     io.to(incoming.target).emit("ice-candidate", incoming);
+//   });
+// });
 
 const port = process.env.PORT || 8080;
 server.listen(port, () => {
