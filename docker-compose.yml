@@ -1,14 +1,14 @@
-version: '3'
+version: "3"
 
 services:
-
   turn-server:
     build: ./turn/
     container_name: turn-server
     image: turn
     ports:
-      - "3478:3478/tcp"
-      - "3478:3478/udp"
+      - "3478:3478"
+      # - "3478:3478/tcp"
+      # - "3479:3479/udp"
     networks:
       - webrtc
 
@@ -33,4 +33,4 @@ services:
       - webrtc
 
 networks:
-    webrtc:
+  webrtc:
