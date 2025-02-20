@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+  <head>
+    <title>WebRTC Client</title>
+    <style>
+      #localVideo {
+        width: 320px;
+        height: 240px;
+        border: 1px solid black;
+      }
+
+      .remoteVideo {
+        width: 320px;
+        height: 240px;
+        border: 1px solid blue;
+        margin: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebRTC Client</h1>
+
+    <h2>Local Video</h2>
+    <video id="localVideo" autoplay muted></video>
+
+    <h2>Remote Videos</h2>
+    <div id="remoteVideos">
+      <!-- Remote video streams will be added here -->
+    </div>
+
+    <script>
+      // Configuration
+      const signalingServerUrl = "http://localhost:8080"; // Replace with your signaling server URL
+      const peerId = generatePeerId(); // Generate a unique Peer ID
+      const sessionId = "testSession"; // Replace with your session ID
+
+      let eventSource;
+      let localStream;
+      const remoteStreams = {}; // Store remote streams by peer ID
+
+      // Helper function to generate a unique peer ID
+      function generatePeerId() {
+        return Math.random().toString(36).substring(2, 15);
+      }
+
+      // --- 1. Establish SSE connection ---
+      function connectToSignalingServer() {
+        eventSource = new EventSource(
+          `${signalingServerUrl}/events/${sessionId}/${peerId}`,
+        );
+
+        eventSource.onopen = () => {
+          console.log("Connected to the signaling server (SSE)");
+          registerWithServer();
+        };
+
+        eventSource.onmessage = (event) => {
+          handleSignalingMessage(event);
+        };
+
+        eventSource.onerror = (error) => {
+          console.error("SSE error:", error);
+        };
+
+        eventSource.onclose = () => {
+          console.log("Disconnected from the signaling server (SSE)");
+        };
+      }
+
+      // --- 2. Register with the signaling server ---
+      function registerWithServer() {
+        fetch(`${signalingServerUrl}/register/${sessionId}/${peerId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ clientType: "browser" }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            console.log("Registration response:", data);
+            if (data.message === "Registered") {
+              console.log("Successfully registered with the signaling server.");
+            }
+          });
+      }
+
+      // --- 3. Get User Media (Local Stream) ---
+      async function startLocalStream() {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          document.getElementById("localVideo").srcObject = localStream;
+        } catch (error) {
+          console.error("Error accessing media devices:", error);
+        }
+      }
+
+      // --- 4. Handle Signaling Messages ---
+      function handleSignalingMessage(event) {
+        try {
+          const message = JSON.parse(event.data);
+          console.log("received message:", message);
+          switch (message.type) {
+            case "new-peer":
+              console.log("New peer joined:", message.peerId);
+              // Handle new peer joining (e.g., create a new RTCPeerConnection)
+              break;
+            // Add cases to handle offer, answer, ice-candidate messages
+            default:
+              console.log("Received unknown message:", message);
+          }
+        } catch (error) {
+          console.error("Error parsing SSE message:", error);
+        }
+      }
+
+      // --- 5. Start WebRTC ---
+      async function startWebRTC() {
+        await startLocalStream();
+      }
+
+      // --- Helper Functions ---
+      // Add remote video element to the page
+      function addRemoteVideoStream(peerId, stream) {
+        const remoteVideosDiv = document.getElementById("remoteVideos");
+        const videoElement = document.createElement("video");
+        videoElement.id = `remoteVideo_${peerId}`;
+        videoElement.autoplay = true;
+        videoElement.classList.add("remoteVideo");
+        videoElement.srcObject = stream;
+        remoteVideosDiv.appendChild(videoElement);
+        remoteStreams[peerId] = stream;
+      }
+
+      // Initialize everything
+      connectToSignalingServer();
+      startWebRTC();
+    </script>
+  </body>
+</html>

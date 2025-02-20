@@ -1,24 +1,85 @@
 const express = require("express");
 const http = require("http");
+const axios = require("axios");
+const cors = require("cors");
+const path = require("path");
+const bodyParser = require("body-parser");
+const https = require("https");
+
+const httpsAgent = new https.Agent({
+  family: 4, // Force IPv4
+});
 
 const app = express();
+app.use(cors());
+app.use(bodyParser.json()); // for parsing application/json
+
 const server = http.createServer(app);
 
 let clients = {}; // active browser or device clients connected via SSE
 let sessions = {}; // active webrtc sessions I think
+let androidClients = {}; // active android clients
+
+// Cloudflare TURN configuration (replace with your actual values)
+const TURN_KEY_ID = "7341540480fe621fc4e6267e9a55ec49";
+const TURN_KEY_API_TOKEN =
+  "b67ff493c47f78b89133bd1e3d6cb1aad05b9d21751256e75336534905f6e74c";
+
+app.use(express.static(path.join(__dirname, "www")));
+
+// GET endpoint to return ICE servers
+app.get("/iceServers", async (req, res) => {
+  try {
+    // Call the Cloudflare TURN API to generate credentials
+    const response = await axios.post(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${TURN_KEY_ID}/credentials/generate`,
+      { ttl: 86400 },
+      {
+        headers: {
+          Authorization: `Bearer ${TURN_KEY_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        httpsAgent,
+      },
+    );
+
+    if (response.status === 201 || response.status === 200) {
+      console.log(response.data);
+      const { username, credential, iceServers } = response.data; // Assuming Cloudflare returns these fields
+      res.setHeader("Content-Type", "application/json");
+      res.status(200).send(JSON.stringify(iceServers));
+    } else {
+      console.error(
+        "Failed to generate TURN credentials",
+        response.status,
+        response.data,
+      );
+      res.status(500).send({ error: "Failed to generate TURN credentials" });
+    }
+  } catch (error) {
+    console.error("Error generating TURN credentials", error);
+    res.status(500).send({ error: "Error generating TURN credentials" });
+  }
+});
+
+app.get("/sessions", (req, res) => {
+  res.json({ sessions });
+});
 
 // Helper function to send SSE messages
 function sendEvent(clientId, event, data) {
   if (clients[clientId]) {
-    clients[clientId].response.write(`event: ${event}\n`);
-    clients[clientId].response.write(`data: ${JSON.stringify(data)}\n\n`);
+    // clients[clientId].response.write(`event: ${event}\n`);
+    clients[clientId].response.write(
+      `data: ${JSON.stringify({ ...data, ...{ type: event } })}\n\n`,
+    );
   } else {
     console.log(`Client ${clientId} not found.`);
   }
 }
 
 // SSE endpoint
-app.get("/sse-events/:sessionId/:peerId", (req, res) => {
+app.get("/events/:sessionId/:peerId", async (req, res) => {
   const { sessionId, peerId } = req.params;
   const clientId = `${sessionId}-${peerId}`;
 
@@ -39,6 +100,8 @@ app.get("/sse-events/:sessionId/:peerId", (req, res) => {
   clients[clientId] = newClient;
 
   console.log(`New SSE client connected: ${clientId}`);
+
+  // await sendEvent(clientId, "connected", { time: new Date() });
 
   req.on("close", () => {
     console.log(`${clientId} Connection closed`);
@@ -63,7 +126,8 @@ app.get("/sse-events/:sessionId/:peerId", (req, res) => {
 // Register endpoint
 app.post("/register/:sessionId/:peerId", (req, res) => {
   const { sessionId, peerId } = req.params;
-  const { clientType = "browser" } = req.body; // Expecting 'android' or 'browser'
+  // const { clientType = "browser" } = req.body; // Expecting 'android' or 'browser'
+  const clientType = "browser";
   const clientId = `${sessionId}-${peerId}`;
 
   // creating an empty session if it doesn't exists
@@ -93,8 +157,8 @@ app.post("/register/:sessionId/:peerId", (req, res) => {
       } else {
         // Notify browser clients via SSE
         sendEvent(otherClientId, "new-peer", {
-          peerId: peerId,
-          sessionId: sessionId,
+          senderId: peerId,
+          // sessionId: sessionId,
         });
       }
     }

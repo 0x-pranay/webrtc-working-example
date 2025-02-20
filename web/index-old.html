@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>WebRTC working example</title>
+    <link rel="stylesheet" type="text/css" href="style.css" />
+  </head>
+  <body>
+    <button id="startCall" type="button" onclick="startCall()">
+      Start Call
+    </button>
+    <video id="remoteStream" autoplay playsinline></video>
+    <video id="localStream" autoplay playsinline></video>
+
+    <script src="socket.io.js"></script>
+    <script src="main.js"></script>
+    <button
+      id="toggleMic"
+      type="button"
+      alt="Toggle mic status"
+      class="muted"
+      onclick="toggleMic()"
+    >
+      Mic
+    </button>
+  </body>
+</html>
