@@ -10,6 +10,8 @@ let peerConnections = {}; // Store peer connections by peer ID
 
 const lastBytesReceived = {};
 const lastTimestamp = {};
+let lastSentTimestamp;
+let lastBytesSent;
 let isStreaming = false;
 let audioEnabled = true;
 let videoEnabled = true;
@@ -27,7 +29,6 @@ const bandwidthSelect = document.getElementById("bandwidthSelect");
 const localResolutionDisplay = document.getElementById("localResolution");
 const localBitrateDisplay = document.getElementById("localBitrate");
 
-// --- 1. Establish SSE connection ---
 function connectToSignalingServer() {
   eventSource = new EventSource(
     `${signalingServerUrl}/events/${sessionId}/${peerId}`,
@@ -51,8 +52,7 @@ function connectToSignalingServer() {
   };
 }
 
-// --- 2. Register with the signaling server ---
-function registerWithServer() {
+async function registerWithServer() {
   return fetch(`${signalingServerUrl}/register/${sessionId}/${peerId}`, {
     method: "POST",
     headers: {
@@ -77,7 +77,6 @@ function registerWithServer() {
     });
 }
 
-// --- 3. Get ICE Servers ---
 async function getIceServers() {
   try {
     const response = await fetch(`${signalingServerUrl}/iceServers`);
@@ -91,7 +90,6 @@ async function getIceServers() {
   return iceServers;
 }
 
-// --- 4. Get User Media (Local Stream) ---
 async function startLocalStream() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
@@ -103,7 +101,7 @@ async function startLocalStream() {
     startStopButton.textContent = "Stop Stream";
     toggleAudioButton.disabled = false;
     toggleVideoButton.disabled = false;
-    updateStats();
+    // startLocalStats();
   } catch (error) {
     console.error("Error accessing media devices:", error);
   }
@@ -123,7 +121,6 @@ function stopLocalStream() {
   }
 }
 
-// --- 5. Handle Signaling Messages ---
 async function handleSignalingMessage(event) {
   try {
     const message = JSON.parse(event.data);
@@ -160,7 +157,6 @@ async function handleSignalingMessage(event) {
   }
 }
 
-// --- 6. WebRTC Functions ---
 function createPeerConnection(remotePeerId) {
   console.log("creating peer connection with ", remotePeerId);
   // console.log("RTCPeerConfiguration", { iceServers });
@@ -181,6 +177,37 @@ function createPeerConnection(remotePeerId) {
       addRemoteVideoStream(remotePeerId, event.streams[0]);
     } else {
       console.log("no stream");
+    }
+  };
+
+  peerConnections[remotePeerId].onconnectionstatechange = (event) => {
+    console.log(
+      "onconnectionstatechange: ",
+      peerConnections[remotePeerId].connectionState,
+    );
+    switch (peerConnections[remotePeerId].connectionState) {
+      case "new":
+        console.log(
+          "onconnectionstatechange. New connection with peer:",
+          remotePeerId,
+        );
+        break;
+      case "connected":
+        console.log(
+          "onconnectionstatechange. Connected to peer:",
+          remotePeerId,
+        );
+        break;
+      case "disconnected":
+      case "failed":
+        console.log(
+          "onconnectionstatechange. Disconnected from peer:",
+          remotePeerId,
+        );
+        break;
+      case "closed":
+        console.log("Connection closed with peer:", remotePeerId);
+        break;
     }
   };
 
@@ -259,13 +286,11 @@ async function startStream(sessionId) {
   const registrationSuccess = await registerWithServer(); // Register first
   if (registrationSuccess) {
     connectToSignalingServer();
-    // createPeerConnection("dummy"); // Create a dummy connection to trigger ICE candidate gathering
   } else {
     console.error("Failed to register, cannot start stream.");
   }
 }
 
-// --- 7. Control Functions ---
 startStopButton.onclick = async () => {
   if (isStreaming) {
     stopLocalStream();
@@ -323,19 +348,18 @@ bandwidthSelect.onchange = async () => {
   }
 };
 
-function updateStats() {
+function updateLocalStats() {
   if (localStream && localStream.getVideoTracks().length > 0) {
     const videoTrack = localStream.getVideoTracks()[0];
     const settings = videoTrack.getSettings();
     localResolutionDisplay.textContent = `${settings.width}x${settings.height}`;
 
     //This is a basic implementation.  A full implementation would require RTCRtpSender.getStats()
-    localBitrateDisplay.textContent = "calculating...";
+    localBitrateDisplay.textContent = "N/A";
   }
-  setTimeout(updateStats, 1000); // Refresh every 1 second
+  // setTimeout(updateStats, 1000); // Refresh every 1 second
 }
 
-// --- 7. Session Management ---
 joinSessionButton.onclick = async () => {
   sessionId = sessionIdInput.value.trim();
   if (!sessionId) {
@@ -356,13 +380,6 @@ copySessionIdButton.onclick = () => {
     });
 };
 
-// --- 8. Start WebRTC ---
-async function startWebRTC() {
-  await getIceServers();
-  //The code has already got the media before. Removed awaiting the media to get the code flow to work
-  //await startLocalStream();
-}
-
 // --- Helper Functions ---
 // Add remote video element to the page
 function addRemoteVideoStream(peerId, stream) {
@@ -379,7 +396,7 @@ function addRemoteVideoStream(peerId, stream) {
     // Create stats elements for remote video
     const statsDiv = document.createElement("div");
     statsDiv.id = `remoteStats_${peerId}`;
-    statsDiv.innerHTML = `<p>Resolution: <span id="remoteResolution_${peerId}"></span></p><p>Bitrate: <span id="remoteBitrate_${peerId}"></span> kbps</p>`;
+    statsDiv.innerHTML = `<p>Resolution: <span id="remoteResolution_${peerId}"></span></p><p>Bitrate: <span id="remoteBitrate_${peerId}"></span> </p>`;
 
     remoteVideosDiv.appendChild(videoElement);
     remoteVideosDiv.appendChild(statsDiv);
@@ -395,6 +412,11 @@ function startRemoteStats(peerId) {
   }, 1000);
 }
 
+function startLocalStats() {
+  setInterval(() => {
+    updateLocalStats();
+  }, 1000);
+}
 async function updateRemoteStats(peerId) {
   if (peerConnections[peerId]) {
     try {
@@ -427,16 +449,28 @@ async function updateRemoteStats(peerId) {
             lastTimestamp[peerId] = timestamp;
           }
         }
+
+        if (report.type === "outbound-rtp" && report.kind === "video") {
+          localResolutionDisplay.textContent = `${report.frameWidth}x${report.frameHeight}`;
+
+          //Bitrate calculation
+          const bytes = report.bytesSent;
+          const timestamp = report.timestamp;
+          if (lastBytesSent && lastSentTimestamp) {
+            const bitrate = Math.round(
+              (8 * (bytes - lastBytesSent)) / (timestamp - lastSentTimestamp),
+            );
+            localBitrateDisplay.textContent = `${bitrate} kbps`;
+          }
+          lastBytesSent = bytes;
+          lastSentTimestamp = timestamp;
+        }
       });
     } catch (e) {
       console.error("Error getting remote stats", e);
     }
   }
 }
-
-// Initialize -  Wait for user to enter session information
-//connectToSignalingServer();
-//startWebRTC();
 
 // Helper function to generate a unique peer ID
 function generatePeerId() {
