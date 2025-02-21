@@ -17,10 +17,10 @@ let bandwidthCap = 0; // No cap by default
 let iceServers;
 
 // Get DOM elements
+const startStopButton = document.getElementById("startStopButton");
 const sessionIdInput = document.getElementById("sessionIdInput");
 const joinSessionButton = document.getElementById("joinSessionButton");
 const copySessionIdButton = document.getElementById("copySessionIdButton");
-const startStopButton = document.getElementById("startStopButton");
 const toggleAudioButton = document.getElementById("toggleAudioButton");
 const toggleVideoButton = document.getElementById("toggleVideoButton");
 const bandwidthSelect = document.getElementById("bandwidthSelect");
@@ -34,7 +34,7 @@ function connectToSignalingServer() {
   );
 
   eventSource.onopen = () => {
-    console.log("Connected to the signaling server (SSE)");
+    console.log("Connection to the signaling server (SSE) is open");
     // registerWithServer();
   };
 
@@ -47,7 +47,7 @@ function connectToSignalingServer() {
   };
 
   eventSource.onclose = () => {
-    console.log("Disconnected from the signaling server (SSE)");
+    console.log("Connection to the the signaling server (SSE) is closed");
   };
 }
 
@@ -62,7 +62,7 @@ function registerWithServer() {
   })
     .then((response) => response.json())
     .then((data) => {
-      console.log("Registration response:", data);
+      // console.log("Registration response:", data);
       if (data.message === "Registered") {
         console.log("Successfully registered with the signaling server.");
         return true; // Indicate successful registration
@@ -127,29 +127,31 @@ function stopLocalStream() {
 async function handleSignalingMessage(event) {
   try {
     const message = JSON.parse(event.data);
-    console.log(message);
+    const { type, senderId, payload } = message;
+    console.log("received sse-event:", message);
 
-    switch (message.type) {
+    switch (type) {
       case "new-peer":
-        console.log("New peer joined:", message.senderId);
-        createPeerConnection(message.senderId);
-        sendOffer(message.senderId);
+        console.log("New peer joined:", senderId);
+        createPeerConnection(senderId);
+        // Send an offer to the newly joined peers
+        sendOffer(senderId);
         break;
       case "offer":
-        console.log("Received offer from:", message.senderId);
-        handleOffer(message.senderId, message.data);
+        console.log("Received offer from:", senderId);
+        handleOffer(senderId, payload);
         break;
       case "answer":
         console.log("Received answer from:", message.senderId);
-        handleAnswer(message.senderId, message.data);
+        handleAnswer(senderId, payload);
         break;
       case "ice-candidate":
         console.log("Received ICE candidate from:", message.senderId);
-        handleIceCandidate(message.senderId, message.data);
+        handleIceCandidate(senderId, payload);
         break;
-      case "ping":
-        console.log("Received ping: ", message);
-        break;
+      // case "ping":
+      //   console.log("Received ping: ", message);
+      //   break;
       default:
         console.log("Received unknown message:", message);
     }
@@ -166,15 +168,16 @@ function createPeerConnection(remotePeerId) {
     iceServers: [iceServers],
   });
 
-  peerConnections[remotePeerId].onicecandidate = (event) => {
-    if (event.candidate) {
-      sendIceCandidate(remotePeerId, event.candidate);
+  peerConnections[remotePeerId].onicecandidate = async (event) => {
+    console.log("remotePeerId: ", remotePeerId, "event:", event);
+    if (event.candidate && remotePeerId !== "dummy") {
+      await sendIceCandidate(remotePeerId, event.candidate);
     }
   };
 
   peerConnections[remotePeerId].ontrack = (event) => {
     console.log("ontrack event", event);
-    if (event.streams && event.streams[0]) {
+    if (event.streams && event.streams[0] && remotePeerId !== "dummy") {
       addRemoteVideoStream(remotePeerId, event.streams[0]);
     } else {
       console.log("no stream");
@@ -182,11 +185,9 @@ function createPeerConnection(remotePeerId) {
   };
 
   if (localStream) {
-    localStream
-      .getTracks()
-      .forEach((track) =>
-        peerConnections[remotePeerId].addTrack(track, localStream),
-      );
+    localStream.getTracks().forEach(
+      (track) => peerConnections[remotePeerId].addTrack(track, localStream), // Add each track to the connection
+    );
   }
 }
 
@@ -199,7 +200,10 @@ async function sendOffer(remotePeerId) {
 
 async function handleOffer(remotePeerId, offer) {
   console.log("handling offer with ", remotePeerId);
-  createPeerConnection(remotePeerId);
+  if (!peerConnections[remotePeerId]) {
+    createPeerConnection(remotePeerId);
+  }
+
   await peerConnections[remotePeerId].setRemoteDescription(
     new RTCSessionDescription(offer),
   );
@@ -210,17 +214,21 @@ async function handleOffer(remotePeerId, offer) {
 
 async function handleAnswer(remotePeerId, answer) {
   console.log("handling answer with ", remotePeerId);
-  await peerConnections[remotePeerId].setRemoteDescription(
-    new RTCSessionDescription(answer),
-  );
+  if (peerConnections[remotePeerId] && !peerConnections["dummy"]) {
+    await peerConnections[remotePeerId].setRemoteDescription(
+      new RTCSessionDescription(answer),
+    );
+  }
 }
 
 async function handleIceCandidate(remotePeerId, iceCandidate) {
   try {
     console.log("handling ice candidate with ", remotePeerId);
-    await peerConnections[remotePeerId].addIceCandidate(
-      new RTCIceCandidate(iceCandidate),
-    );
+    if (peerConnections[remotePeerId]) {
+      await peerConnections[remotePeerId].addIceCandidate(
+        new RTCIceCandidate(iceCandidate),
+      );
+    }
   } catch (e) {
     console.error("Error adding received ICE candidate", e, iceCandidate);
   }
@@ -246,12 +254,12 @@ function sendSignalingMessage(remotePeerId, type, data) {
 }
 
 async function startStream(sessionId) {
+  await getIceServers();
+  await startLocalStream();
   const registrationSuccess = await registerWithServer(); // Register first
   if (registrationSuccess) {
-    await getIceServers();
-    await startLocalStream();
-    createPeerConnection("ownPeer");
     connectToSignalingServer();
+    // createPeerConnection("dummy"); // Create a dummy connection to trigger ICE candidate gathering
   } else {
     console.error("Failed to register, cannot start stream.");
   }
@@ -261,6 +269,7 @@ async function startStream(sessionId) {
 startStopButton.onclick = async () => {
   if (isStreaming) {
     stopLocalStream();
+    eventSource.close();
   } else {
     //New order
     sessionId = generateSessionId();
