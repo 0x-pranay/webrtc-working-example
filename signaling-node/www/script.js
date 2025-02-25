@@ -191,7 +191,7 @@ function createPeerConnection(remotePeerId) {
       "streams: ",
       event.streams.length,
       "tracks:",
-      await event.streams[0].getTracks(),
+      // await event.streams[0].getTracks(),
     );
 
     // gotRemoteStream(event);
@@ -280,11 +280,11 @@ function createPeerConnection(remotePeerId) {
 
 async function sendOffer(remotePeerId) {
   console.log("creating offer with ", remotePeerId);
-  // const offer = await peerConnections[remotePeerId].createOffer();
-  const offer = await peerConnections[remotePeerId].createOffer({
-    offerToReceiveAudio: true,
-    offerToReceiveVideo: true,
-  });
+  const offer = await peerConnections[remotePeerId].createOffer();
+  // const offer = await peerConnections[remotePeerId].createOffer({
+  //   offerToReceiveAudio: true,
+  //   offerToReceiveVideo: true,
+  // });
 
   const modifiedOffer = new RTCSessionDescription({
     type: offer.type,

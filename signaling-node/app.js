@@ -5,14 +5,26 @@ const cors = require("cors");
 const path = require("path");
 const bodyParser = require("body-parser");
 const https = require("https");
-
-const httpsAgent = new https.Agent({
-  family: 4, // Force IPv4
-});
+const winston = require("winston");
+const reqLogger = require("express-request-logger");
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json()); // for parsing application/json
+
+// request logger
+// const logger = new winston.Logger({
+//   transports: [
+//     // new winston.transports.Console(),
+//     new winston.transports.File({ filename: "httpLogs.log" }),
+//   ],
+// });
+
+// app.use(reqLogger.create(logger, {}));
+
+const httpsAgent = new https.Agent({
+  family: 4, // Force IPv4
+});
 
 const server = http.createServer(app);
 
@@ -42,7 +54,6 @@ app.get("/iceServers", async (req, res) => {
         httpsAgent,
       },
     );
-
     if (response.status === 201 || response.status === 200) {
       // console.log(response.data);
       const { username, credential, iceServers } = response.data; // Assuming Cloudflare returns these fields
@@ -118,9 +129,9 @@ app.get("/events/:sessionId/:peerId", async (req, res) => {
   });
 
   // Send a ping to keep the connection alive
-  // setInterval(() => {
-  //   sendEvent(clientId, "ping", { time: new Date() });
-  // }, 30000);
+  setInterval(() => {
+    sendEvent(clientId, "ping", { time: new Date() });
+  }, 30000);
 });
 
 // Register endpoint
