@@ -1,5 +1,6 @@
 // Configuration
-const signalingServerUrl = "http://localhost:8080"; // Replace with your signaling server URL
+// const signalingServerUrl = "http://localhost:8080"; // Replace with your signaling server URL
+const signalingServerUrl = "https://api-dt1-dev-aps1.lightmetrics.co:3478"; // Replace with your signaling server URL
 const peerId = generatePeerId(); // Generate a unique Peer ID
 let sessionId = ""; // Session ID will be dynamically set
 
@@ -28,6 +29,13 @@ const toggleVideoButton = document.getElementById("toggleVideoButton");
 const bandwidthSelect = document.getElementById("bandwidthSelect");
 const localResolutionDisplay = document.getElementById("localResolution");
 const localBitrateDisplay = document.getElementById("localBitrate");
+
+// Codec
+const codecPreferences = document.getElementById("codecPreferences");
+const actualCodec = document.getElementById("actualCodec");
+const supportsSetCodecPreferences =
+  window.RTCRtpTransceiver &&
+  "setCodecPreferences" in window.RTCRtpTransceiver.prototype;
 
 function connectToSignalingServer() {
   eventSource = new EventSource(
@@ -93,7 +101,7 @@ async function getIceServers() {
 async function startLocalStream() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
+      video: false,
       audio: true,
     });
     document.getElementById("localVideo").srcObject = localStream;
@@ -165,14 +173,29 @@ function createPeerConnection(remotePeerId) {
   });
 
   peerConnections[remotePeerId].onicecandidate = async (event) => {
-    console.log("remotePeerId: ", remotePeerId, "event:", event);
+    console.log(
+      "pc.onicecandidate. remotePeerId: ",
+      remotePeerId,
+      "event:",
+      event,
+    );
     if (event.candidate && remotePeerId !== "dummy") {
-      await sendIceCandidate(remotePeerId, event.candidate);
+      sendIceCandidate(remotePeerId, event.candidate);
     }
   };
 
-  peerConnections[remotePeerId].ontrack = (event) => {
-    console.log("ontrack event", event);
+  peerConnections[remotePeerId].ontrack = async (event) => {
+    console.log(
+      "pc.ontrack event",
+      event,
+      "streams: ",
+      event.streams.length,
+      "tracks:",
+      await event.streams[0].getTracks(),
+    );
+
+    // gotRemoteStream(event);
+
     if (event.streams && event.streams[0] && remotePeerId !== "dummy") {
       addRemoteVideoStream(remotePeerId, event.streams[0]);
     } else {
@@ -180,28 +203,41 @@ function createPeerConnection(remotePeerId) {
     }
   };
 
+  // peerConnections[remotePeerId].onaddstream = async (event) => {
+  //   console.log("pc.onaddstream event", event);
+  //   const audioTracks = await event.stream.getAudioTracks();
+  //   const videoTracks = await event.stream.getVideoTracks();
+  //
+  //   console.log(audioTracks, videoTracks);
+  //   // if (event.stream && event.stream[0] && remotePeerId !== "dummy") {
+  //   //   addRemoteVideoStream(remotePeerId, event.streams[0]);
+  //   // } else {
+  //   //   console.log("no stream");
+  //   // }
+  // };
+
   peerConnections[remotePeerId].onconnectionstatechange = (event) => {
     console.log(
-      "onconnectionstatechange: ",
+      "pc.onconnectionstatechange: ",
       peerConnections[remotePeerId].connectionState,
     );
     switch (peerConnections[remotePeerId].connectionState) {
       case "new":
         console.log(
-          "onconnectionstatechange. New connection with peer:",
+          "pc.onconnectionstatechange. New connection with peer:",
           remotePeerId,
         );
         break;
       case "connected":
         console.log(
-          "onconnectionstatechange. Connected to peer:",
+          "pc.onconnectionstatechange. Connected to peer:",
           remotePeerId,
         );
         break;
       case "disconnected":
       case "failed":
         console.log(
-          "onconnectionstatechange. Disconnected from peer:",
+          "pc.onconnectionstatechange. Disconnected from peer:",
           remotePeerId,
         );
         break;
@@ -212,17 +248,53 @@ function createPeerConnection(remotePeerId) {
   };
 
   if (localStream) {
-    localStream.getTracks().forEach(
+    localStream.getAudioTracks().forEach(
       (track) => peerConnections[remotePeerId].addTrack(track, localStream), // Add each track to the connection
     );
+
+    // transceiver = peerConnections[remotePeerId].addTransceiver("video", {
+    //   direction: "recvonly",
+    //   sendEncodings: [{ rid: "r0", maxBitrate: 100000 }],
+    //   streams: [localStream],
+    // });
+    //
+    // const preferredCodec =
+    //   codecPreferences.options[codecPreferences.selectedIndex];
+    // if (preferredCodec.value !== "") {
+    //   const [mimeType, sdpFmtpLine] = preferredCodec.value.split(" ");
+    //   const { codecs } = RTCRtpReceiver.getCapabilities("video");
+    //   const selectedCodecIndex = codecs.findIndex(
+    //     (c) => c.mimeType === mimeType && c.sdpFmtpLine === sdpFmtpLine,
+    //   );
+    //   const selectedCodec = codecs[selectedCodecIndex];
+    //   codecs.splice(selectedCodecIndex, 1);
+    //   codecs.unshift(selectedCodec);
+    //   transceiver.setCodecPreferences(codecs);
+    //   console.log("Receiver's preferred video codec", selectedCodec);
+    // }
+    // transceiver.setCodecPreferences([
+    //   { mimeTypes: ["video/H264"], clockRate: 90000, channels: 0 },
+    // ]);
   }
 }
 
 async function sendOffer(remotePeerId) {
   console.log("creating offer with ", remotePeerId);
-  const offer = await peerConnections[remotePeerId].createOffer();
-  await peerConnections[remotePeerId].setLocalDescription(offer);
-  sendSignalingMessage(remotePeerId, "offer", offer);
+  // const offer = await peerConnections[remotePeerId].createOffer();
+  const offer = await peerConnections[remotePeerId].createOffer({
+    offerToReceiveAudio: true,
+    offerToReceiveVideo: true,
+  });
+
+  const modifiedOffer = new RTCSessionDescription({
+    type: offer.type,
+    // sdp: preferH264(offer.sdp),
+    sdp: offer.sdp,
+  });
+
+  console.log("offer", offer, "modifiedOffer", modifiedOffer);
+  await peerConnections[remotePeerId].setLocalDescription(modifiedOffer);
+  sendSignalingMessage(remotePeerId, "offer", modifiedOffer);
 }
 
 async function handleOffer(remotePeerId, offer) {
@@ -472,6 +544,7 @@ async function updateRemoteStats(peerId) {
   }
 }
 
+// setCodecs();
 // Helper function to generate a unique peer ID
 function generatePeerId() {
   const peerId = "peer-" + Math.random().toString(36).substring(2, 15);
@@ -483,4 +556,78 @@ function generatePeerId() {
 function generateSessionId() {
   const sessionId = "session-" + Math.random().toString(36).substring(2, 15);
   return sessionId;
+}
+
+function setCodecs() {
+  if (supportsSetCodecPreferences) {
+    const { codecs } = RTCRtpReceiver.getCapabilities("video");
+    codecs.forEach((codec) => {
+      if (
+        ["video/red", "video/ulpfec", "video/rtx", "video/flexfec-03"].includes(
+          codec.mimeType,
+        )
+      ) {
+        return;
+      }
+      const option = document.createElement("option");
+      option.value = (codec.mimeType + " " + (codec.sdpFmtpLine || "")).trim();
+      option.innerText = option.value;
+      codecPreferences.appendChild(option);
+    });
+    codecPreferences.disabled = false;
+  }
+}
+
+function preferH264(sdp) {
+  const lines = sdp.split("\r\n");
+  // Filter out non-H.264 codecs (assuming 100 is the payload type for H.264)
+  const h264PayloadType = "100";
+  const excludeAudioCodes = [
+    "opus",
+    "PCMU",
+    "PCMA",
+    "ISAC",
+    "G722",
+    "ILBC",
+    "G729",
+    "CN",
+    "telephone-event",
+  ];
+  const codecLines = lines.filter(
+    (line) =>
+      line.startsWith("a=rtpmap:") &&
+      !line.includes("H264") &&
+      !excludeAudioCodes.some((code) => line.includes(code)),
+  );
+
+  // Remove other codec lines
+  const filteredLines = lines.filter((line) => !codecLines.includes(line));
+
+  // Add H.264 codec line if not already present
+  if (!filteredLines.some((line) => line.includes("H264"))) {
+    filteredLines.push(`a=rtpmap:${h264PayloadType} H264/90000`);
+  }
+
+  // Rebuild the SDP
+  return filteredLines.join("\r\n");
+}
+
+function gotRemoteStream(e) {
+  // Set codec preferences on the receiving side.
+  if (e.track.kind === "video" && supportsSetCodecPreferences) {
+    const preferredCodec =
+      codecPreferences.options[codecPreferences.selectedIndex];
+    if (preferredCodec.value !== "") {
+      const [mimeType, sdpFmtpLine] = preferredCodec.value.split(" ");
+      const { codecs } = RTCRtpReceiver.getCapabilities("video");
+      const selectedCodecIndex = codecs.findIndex(
+        (c) => c.mimeType === mimeType && c.sdpFmtpLine === sdpFmtpLine,
+      );
+      const selectedCodec = codecs[selectedCodecIndex];
+      codecs.splice(selectedCodecIndex, 1);
+      codecs.unshift(selectedCodec);
+      e.transceiver.setCodecPreferences(codecs);
+      console.log("Receiver's preferred video codec", selectedCodec);
+    }
+  }
 }
