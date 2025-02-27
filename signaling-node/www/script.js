@@ -1,4 +1,4 @@
-// Configuration
+//
 // const signalingServerUrl = "http://localhost:8080"; // Replace with your signaling server URL
 const signalingServerUrl = "https://api-dt1-dev-aps1.lightmetrics.co:3478"; // Replace with your signaling server URL
 const peerId = generatePeerId(); // Generate a unique Peer ID
@@ -7,7 +7,13 @@ let sessionId = ""; // Session ID will be dynamically set
 let eventSource;
 let localStream;
 const remoteStreams = {}; // Store remote streams by peer ID
+const remoteAudioStream = {};
+const remoteVideoStream = {};
 let peerConnections = {}; // Store peer connections by peer ID
+let offers = {};
+let receivedOffers = {};
+sentAnswers = {};
+let answers = {};
 
 const lastBytesReceived = {};
 const lastTimestamp = {};
@@ -101,7 +107,7 @@ async function getIceServers() {
 async function startLocalStream() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
-      video: false,
+      video: true,
       audio: true,
     });
     document.getElementById("localVideo").srcObject = localStream;
@@ -185,19 +191,31 @@ function createPeerConnection(remotePeerId) {
   };
 
   peerConnections[remotePeerId].ontrack = async (event) => {
-    console.log(
-      "pc.ontrack event",
-      event,
-      "streams: ",
-      event.streams.length,
-      "tracks:",
-      // await event.streams[0].getTracks(),
-    );
+    console.log("pc.ontrack event", event, "streams: ", event.streams.length);
 
-    // gotRemoteStream(event);
-
-    if (event.streams && event.streams[0] && remotePeerId !== "dummy") {
-      addRemoteVideoStream(remotePeerId, event.streams[0]);
+    if (event.streams && event.streams[0]) {
+      console.log(
+        "pc.ontrack.  audioTracks",
+        await event.streams[0].getAudioTracks(),
+        "videoTracks",
+        await event.streams[0].getVideoTracks(),
+        // await event.streams[0].getTracks(),
+      );
+      const audioTracks = await event.streams[0].getAudioTracks();
+      const videoTracks = await event.streams[0].getVideoTracks();
+      if (audioTracks.length > 0) {
+        addRemoteAudioStream(remotePeerId, audioTracks);
+      }
+      if (videoTracks.length > 0) {
+        addRemoteVideoStream(remotePeerId, videoTracks);
+      }
+    } else if (event.track) {
+      if (event.track.kind === "audio") {
+        addRemoteAudioStream(remotePeerId, [event.track]);
+      }
+      if (event.track.kind === "video") {
+        addRemoteVideoStream(remotePeerId, [event.track]);
+      }
     } else {
       console.log("no stream");
     }
@@ -248,43 +266,39 @@ function createPeerConnection(remotePeerId) {
   };
 
   if (localStream) {
-    localStream.getAudioTracks().forEach(
+    localStream.getTracks().forEach(
       (track) => peerConnections[remotePeerId].addTrack(track, localStream), // Add each track to the connection
     );
+  }
 
-    // transceiver = peerConnections[remotePeerId].addTransceiver("video", {
-    //   direction: "recvonly",
-    //   sendEncodings: [{ rid: "r0", maxBitrate: 100000 }],
-    //   streams: [localStream],
-    // });
-    //
-    // const preferredCodec =
-    //   codecPreferences.options[codecPreferences.selectedIndex];
-    // if (preferredCodec.value !== "") {
-    //   const [mimeType, sdpFmtpLine] = preferredCodec.value.split(" ");
-    //   const { codecs } = RTCRtpReceiver.getCapabilities("video");
-    //   const selectedCodecIndex = codecs.findIndex(
-    //     (c) => c.mimeType === mimeType && c.sdpFmtpLine === sdpFmtpLine,
-    //   );
-    //   const selectedCodec = codecs[selectedCodecIndex];
-    //   codecs.splice(selectedCodecIndex, 1);
-    //   codecs.unshift(selectedCodec);
-    //   transceiver.setCodecPreferences(codecs);
-    //   console.log("Receiver's preferred video codec", selectedCodec);
-    // }
-    // transceiver.setCodecPreferences([
-    //   { mimeTypes: ["video/H264"], clockRate: 90000, channels: 0 },
-    // ]);
+  // set H264 as preferred codec
+  const [transceiver1] = peerConnections[remotePeerId].getTransceivers();
+
+  console.log("transceiver1: ", transceiver1);
+
+  if (transceiver1) {
+    const codecs = RTCRtpSender.getCapabilities("video").codecs;
+    const preferredOrder = ["video/H264"];
+
+    // transceiver1.setCodecPreferences(sortByMimeTypes(codecs, preferredOrder));
+    // console.log("prefers: ", transceiver1.getParameters());
   }
 }
 
-async function sendOffer(remotePeerId) {
+async function sendOffer(remotePeerId, offer) {
+  const [transceiver1] = peerConnections[remotePeerId].getTransceivers();
+  console.log("before sending offer", transceiver1);
+
+  console.log("transceiver1: ", transceiver1);
+
   console.log("creating offer with ", remotePeerId);
-  const offer = await peerConnections[remotePeerId].createOffer();
-  // const offer = await peerConnections[remotePeerId].createOffer({
-  //   offerToReceiveAudio: true,
-  //   offerToReceiveVideo: true,
-  // });
+  // const offer = await peerConnections[remotePeerId].createOffer();
+  if (!offer) {
+    offer = await peerConnections[remotePeerId].createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    });
+  }
 
   const modifiedOffer = new RTCSessionDescription({
     type: offer.type,
@@ -295,6 +309,8 @@ async function sendOffer(remotePeerId) {
   console.log("offer", offer, "modifiedOffer", modifiedOffer);
   await peerConnections[remotePeerId].setLocalDescription(modifiedOffer);
   sendSignalingMessage(remotePeerId, "offer", modifiedOffer);
+
+  offers[remotePeerId] = modifiedOffer;
 }
 
 async function handleOffer(remotePeerId, offer) {
@@ -303,12 +319,15 @@ async function handleOffer(remotePeerId, offer) {
     createPeerConnection(remotePeerId);
   }
 
+  receivedOffers[remotePeerId] = new RTCSessionDescription(offer);
+
   await peerConnections[remotePeerId].setRemoteDescription(
     new RTCSessionDescription(offer),
   );
   const answer = await peerConnections[remotePeerId].createAnswer();
   await peerConnections[remotePeerId].setLocalDescription(answer);
   sendSignalingMessage(remotePeerId, "answer", answer);
+  sentAnswers[remotePeerId] = answer;
 }
 
 async function handleAnswer(remotePeerId, answer) {
@@ -318,6 +337,7 @@ async function handleAnswer(remotePeerId, answer) {
       new RTCSessionDescription(answer),
     );
   }
+  answers[remotePeerId] = new RTCSessionDescription(answer);
 }
 
 async function handleIceCandidate(remotePeerId, iceCandidate) {
@@ -454,10 +474,11 @@ copySessionIdButton.onclick = () => {
 
 // --- Helper Functions ---
 // Add remote video element to the page
-function addRemoteVideoStream(peerId, stream) {
+function addRemoteVideoStream(peerId, tracks) {
   console.log("Adding remote stream with id ", peerId);
   const remoteVideosDiv = document.getElementById("remoteVideos");
   let videoElement = document.getElementById(`remoteVideo_${peerId}`);
+  // let audioElement = document.getElementById(`remoteAudio_${peerId}`);
 
   if (!videoElement) {
     videoElement = document.createElement("video");
@@ -474,8 +495,33 @@ function addRemoteVideoStream(peerId, stream) {
     remoteVideosDiv.appendChild(statsDiv);
     startRemoteStats(peerId); // Start updating remote stats
   }
+
+  const stream = new MediaStream([tracks[0]]);
+
   videoElement.srcObject = stream;
-  remoteStreams[peerId] = stream;
+  // audioElement.srcObject = stream;
+  // remoteStreams[peerId] = stream;
+  remoteVideoStream[peerId] = stream;
+}
+
+function addRemoteAudioStream(peerId, tracks) {
+  console.log("Adding audio remote stream with id ", peerId);
+  const remoteVideosDiv = document.getElementById("remoteVideos");
+  let audioElement = document.getElementById(`remoteAudio_${peerId}`);
+
+  if (!audioElement) {
+    audioElement = document.createElement("audio");
+    audioElement.id = `remoteAudio_${peerId}`;
+    audioElement.autoplay = true;
+    audioElement.classList.add("remoteAudio");
+    remoteVideosDiv.appendChild(audioElement);
+  }
+  const stream = new MediaStream([tracks[0]]);
+
+  audioElement.srcObject = stream;
+  // audioElement.srcObject = stream;
+  // remoteStreams[peerId] = stream;
+  remoteAudioStream[peerId] = stream;
 }
 
 function startRemoteStats(peerId) {
@@ -554,7 +600,8 @@ function generatePeerId() {
 
 // Function to generate a unique session ID
 function generateSessionId() {
-  const sessionId = "session-" + Math.random().toString(36).substring(2, 15);
+  // const sessionId = "session-" + Math.random().toString(36).substring(2, 15);
+  const sessionId = "ss";
   return sessionId;
 }
 
@@ -631,3 +678,26 @@ function gotRemoteStream(e) {
     }
   }
 }
+
+function sortByMimeTypes(codecs, preferredOrder) {
+  return codecs.sort((a, b) => {
+    const indexA = preferredOrder.indexOf(a.mimeType);
+    const indexB = preferredOrder.indexOf(b.mimeType);
+    const orderA = indexA >= 0 ? indexA : Number.MAX_VALUE;
+    const orderB = indexB >= 0 ? indexB : Number.MAX_VALUE;
+    return orderA - orderB;
+  });
+}
+
+async function getOutboundCodecStat(pc) {
+  const stats = await pc.getStats();
+  for (const stat of [...stats.values()]) {
+    if (stat.type == "outbound-rtp") {
+      return stats.get(stat.codecId);
+    }
+  }
+  await wait(50); // Kludge around https://crbug.com/40821064 in Chrome
+  return getOutboundCodecStat(pc);
+}
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
