@@ -600,8 +600,8 @@ function generatePeerId() {
 
 // Function to generate a unique session ID
 function generateSessionId() {
-  // const sessionId = "session-" + Math.random().toString(36).substring(2, 15);
-  const sessionId = "ss";
+  const sessionId = "session-" + Math.random().toString(36).substring(2, 15);
+  // const sessionId = "sss";
   return sessionId;
 }
 
