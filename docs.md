@@ -2,6 +2,48 @@
 
 ## Sequence Diagram
 
+### Using Socket.io
+
+```mermaid
+
+sequenceDiagram
+
+
+ participant FE AS FE
+
+  participant BE AS BE
+  participant SS AS SignallingServer
+  participant DEVICE
+
+  FE->>BE: POST /live/create-stream-request
+  BE->>SS: /create-session
+  SS->>DEVICE: /notification/create
+
+
+  FE->>+SS: socket.open()
+  DEVICE->>+SS: socket.open()
+  Note over SS: Creates offer and send to all peers. <br/> Creates webrtc connection <br/> relays tracks from device to each peers
+
+  SS-->>FE: offerSdp
+  SS-->>DEVICE: offerSdp
+  FE-->>SS: answerSdp
+  DEVICE-->>SS: answerSdp
+  Note over FE: gathers Icecandidates
+  Note over SS: gathers Icecandidates
+  Note over DEVICE: gathers Icecandidates
+
+  Note over FE,SS: exchange ice-candidates
+  Note over SS,DEVICE: exchange ice-candidates
+
+  FE ->>SS: /live/stop
+  SS-->-DEVICE: socket.close()
+
+  SS-->-FE: socket.close()
+
+```
+
+### using SSE
+
 ```mermaid
 
 sequenceDiagram
