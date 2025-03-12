@@ -5,7 +5,6 @@
 ### Using Socket.io
 
 ```mermaid
-
 sequenceDiagram
 
 
@@ -17,11 +16,13 @@ sequenceDiagram
 
   FE->>BE: POST /live/create-stream-request
   BE->>SS: /create-session
-  SS->>DEVICE: /notification/create
+  BE->>DEVICE: /notification/create
 
 
   FE->>+SS: socket.open()
+  FE-->>SS: event: joinSession
   DEVICE->>+SS: socket.open()
+  DEVICE-->>SS: event: joinSession
   Note over SS: Creates offer and send to all peers. <br/> Creates webrtc connection <br/> relays tracks from device to each peers
 
   SS-->>FE: offerSdp
@@ -35,7 +36,14 @@ sequenceDiagram
   Note over FE,SS: exchange ice-candidates
   Note over SS,DEVICE: exchange ice-candidates
 
-  FE ->>SS: /live/stop
+  FE-->SS: webrtc connection established
+  SS-->DEVICE: webrtc connection established
+
+  FE ->>BE: /live/stop-stream
+  BE->>DEVICE: /notification/create: pushy notification to stop-stream
+  BE->>SS: /stop-stream
+  SS-->DEVICE: webrtc connection closed
+  SS-->FE: webrtc connection closed
   SS-->-DEVICE: socket.close()
 
   SS-->-FE: socket.close()
