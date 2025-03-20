@@ -63,6 +63,7 @@ class PeerConnection {
         peer.pc.addTrack(event.track);
       } else {
         console.log("event.track", event.track);
+        peer.pc.addTrack(event.track);
         this.tracks[event.track.id] = event.track;
       }
     });
@@ -103,6 +104,7 @@ class PeerConnection {
       peerId: this.peerId,
       isDevice: this.isDevice,
       pcState: this.pc.connectionState,
+      tracks: this.tracks,
     };
   }
 }
@@ -160,6 +162,10 @@ class Session {
 
       this.peers.set(peerId, peer);
     }
+  }
+
+  removePeer(peerId) {
+    this.peers.delete(peerId);
   }
 
   getPeers() {

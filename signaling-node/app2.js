@@ -74,6 +74,11 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("disconnect. ", { socketId: socket.id });
+    const { requestStreamId, clientId, fleetId, userId, deviceId } =
+      socket.user;
+    const peerId = socket.peerId;
+    const session = sessionManager.getOrCreateSession(requestStreamId);
+    session.removePeer(peerId);
   });
 
   socket.on("message", handleSocketMessages.bind({ socket }));
