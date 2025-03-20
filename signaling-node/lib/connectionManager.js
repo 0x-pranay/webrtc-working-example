@@ -2,7 +2,10 @@ const {
   RTCPeerConnection,
   RTCSessionDescription,
   RTCIceCandidate,
+  MediaStreamTrack,
+  nonstandard: { RTCAudioSink, RTCVideoSink, RTCVideoSource, RTCAudioSource },
 } = require("@roamhq/wrtc");
+
 const fs = require("fs");
 const { spawn } = require("child_process");
 
@@ -14,6 +17,9 @@ class PeerConnection {
     this.isDevice = peerType === "device";
     this.session = session;
     this.socket = socket;
+    this.socketState = socket.readyState;
+    this.joinDate = new Date().toISOString();
+    this.leftDate = null;
     this.pc = null;
     this.tracks = {};
   }
@@ -60,16 +66,85 @@ class PeerConnection {
           "to peer",
           targertPeerId,
         );
-        peer.pc.addTrack(event.track);
-      } else {
         console.log("event.track", event.track);
-        peer.pc.addTrack(event.track);
+
+        // Get tracks of other peers and replace the tracks with the current peers tracks
+        this.pc.getSenders().forEach((sender) => {
+          for (const [trackId, track] of Object.entries(peer.tracks)) {
+            if (sender.track.kind === track.kind) {
+              console.log("replacing track", trackId, "to", targertPeerId);
+              sender.replaceTrack(track);
+            }
+          }
+        });
+
+        if (this.isDevice && !peer.isDevice) {
+          peer.pc.getSenders().forEach((sender) => {
+            if (
+              sender.track.kind === event.track.kind &&
+              sender.track.kind === "audio"
+            ) {
+              console.log("replacing audio track to device");
+              sender.replaceTrack(event.track);
+            }
+
+            if (
+              sender.track.kind === event.track.kind &&
+              sender.track.kind === "video"
+            ) {
+              console.log("replacing audio track to clients");
+              sender.replaceTrack(event.track);
+            }
+          });
+        } else if (!this.isDevice && peer.isDevice) {
+          peer.pc.getSenders().forEach((sender) => {
+            if (
+              sender.track.kind === event.track.kind &&
+              sender.track.kind === "audio"
+            ) {
+              console.log("replacing audio track to clients");
+              sender.replaceTrack(event.track);
+            }
+          });
+        } else if (!this.isDevice && !peer.isDevice) {
+          peer.pc.getSenders().forEach((sender) => {
+            if (
+              sender.track.kind === event.track.kind &&
+              sender.track.kind === "audio"
+            ) {
+              console.log("replacing audio track to clients");
+              sender.replaceTrack(event.track);
+            }
+            // TODO: remove this condition
+            if (
+              sender.track.kind === event.track.kind &&
+              sender.track.kind === "video"
+            ) {
+              console.log("replacing audio track to clients");
+              sender.replaceTrack(event.track);
+            }
+          });
+        }
+
         this.tracks[event.track.id] = event.track;
       }
     });
   };
 
   async createOffer() {
+    if (this.isDevice) {
+      const audioSource = new RTCAudioSource();
+      const audioTrack = audioSource.createTrack();
+      this.pc.addTrack(audioTrack);
+    } else {
+      const audioSource = new RTCAudioSource();
+      const videoSource = new RTCVideoSource();
+      const audioTrack = audioSource.createTrack();
+      const videoTrack = videoSource.createTrack();
+      this.pc.addTrack(audioTrack);
+      this.pc.addTrack(videoTrack);
+    }
+
     const offer = await this.pc.createOffer({
       offerToReceiveAudio: true,
       offerToReceiveVideo: true,
@@ -92,7 +167,12 @@ class PeerConnection {
   }
 
   handleAnswer = async (answer) => {
-    await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
+    try {
+      console.log("received answer", answer);
+      await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (error) {
+      console.error("error in handleAnswer", error);
+    }
   };
 
   addIceCandidate(candidate) {
@@ -105,6 +185,10 @@ class PeerConnection {
       isDevice: this.isDevice,
       pcState: this.pc.connectionState,
       tracks: this.tracks,
+      joinDate: this.joinDate,
+      leftDate: this.leftDate,
+      socketState: this.socketState,
+      socketId: this.socket.id,
     };
   }
 }
@@ -118,15 +202,19 @@ class Session {
   constructor(sessionId) {
     this.sessionId = sessionId;
     this.peers = new Map();
+    this.starttime = new Date().toISOString();
+    this.endtime = null;
+    this.lastUpdated = null;
+    this.activityLog = [];
   }
 
-  async addPeer(peerId, peerType) {
-    if (!this.peers.has(peerId)) {
-      const peer = new PeerConnection(peerId, peerType, this);
-      this.peers.set(peerId, peer);
-      return peer;
-    }
-  }
+  // async addPeer(peerId, peerType) {
+  //   if (!this.peers.has(peerId)) {
+  //     const peer = new PeerConnection(peerId, peerType, this);
+  //     this.peers.set(peerId, peer);
+  //     return peer;
+  //   }
+  // }
 
   async addPeerFromSocket(socket) {
     const { requestStreamId, clientId, fleetId, userId, deviceId } =
@@ -138,6 +226,7 @@ class Session {
       fleetId,
       userId,
       deviceId,
+      peerExists: this.peers.has(peerId),
     });
 
     // TODO: check if the webrtc connection is already established and open
@@ -145,9 +234,14 @@ class Session {
       const peerType = socket.user.deviceId ? "device" : "web-client";
       const peerId = socket.peerId;
       const peer = new PeerConnection(peerId, peerType, socket, this);
+      this.peers.set(peerId, peer);
+
       await peer.create();
       // send offer to the connected peer
-      const offer = await peer.createOffer();
+      const offer = await peer.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
       socket.emit(
         "message",
         {
@@ -160,12 +254,45 @@ class Session {
         },
       );
 
-      this.peers.set(peerId, peer);
+      this.activityLog.push({
+        event: "peer-connected",
+        timestamp: new Date().toISOString(),
+        peer: {
+          peerId,
+          clientId,
+          fleetId,
+          userId,
+          deviceId,
+        },
+      });
+    } else {
+      console.error("peer already exists", peerId);
     }
   }
 
   removePeer(peerId) {
     this.peers.delete(peerId);
+  }
+
+  handleSocketDisconnects(socket) {
+    const { requestStreamId, clientId, fleetId, userId, deviceId } =
+      socket.user;
+    const peerId = socket.peerId;
+
+    if (this.peers.has(peerId)) {
+      this.peers.delete(peerId);
+    }
+    this.activityLog.push({
+      event: "peer-disconnected",
+      timestamp: new Date().toISOString(),
+      peer: {
+        peerId,
+        clientId,
+        fleetId,
+        userId,
+        deviceId,
+      },
+    });
   }
 
   getPeers() {
@@ -199,13 +326,35 @@ class Session {
   close() {
     this.peers.forEach((peer) => peer.pc.close());
     this.peers.clear();
+    this.endtime = new Date().toISOString();
+    this.activityLog.push({
+      event: "session-closed",
+      timestamp: new Date().toISOString(),
+    });
     // this.recorder.stopRecording();
+  }
+
+  toJSON() {
+    return {
+      sessionId: this.sessionId,
+      peers: Array.from(this.peers).map(([peerId, peer]) => {
+        return peer.toJSON();
+      }),
+      peerCount: this.peers.size,
+      devicePeeers: this.getDevicePeers(),
+      webClientPeers: this.getWebClientPeers(),
+      starttime: this.starttime,
+      endtime: this.endtime,
+      activityLog: this.activityLog,
+    };
   }
 }
 
 class SessionManager {
   constructor() {
     this.sessions = new Map();
+    this.oldSessions = new Map();
+    // store utc timestamp when the session manager is created
   }
 
   getOrCreateSession(sessionId) {
@@ -215,6 +364,7 @@ class SessionManager {
   }
 
   createSession(sessionId) {
+    console.log("creating a new session", sessionId);
     if (!this.sessions.has(sessionId)) {
       this.sessions.set(sessionId, new Session(sessionId));
     }
@@ -226,22 +376,22 @@ class SessionManager {
   }
 
   listSessions() {
-    return Array.from(this.sessions).map(([sessionId, session]) => {
-      return {
-        sessionId,
-        // peers: session.getPeers(),
-        peerCount: session.peers.size,
-        devicePeers: session.getDevicePeers(),
-        webClientPeers: session.getWebClientPeers(),
-        // session,
-        sessionPeers: session.peers,
-      };
-    });
+    return {
+      sessions: Array.from(this.sessions).map(
+        ([sessionId, session]) => session,
+      ),
+      oldSessions: Array.from(this.oldSessions).map(
+        ([sessionId, session]) => session,
+      ),
+    };
   }
 
   removeSession(sessionId) {
+    console.log("removing a session", sessionId);
     if (this.sessions.has(sessionId)) {
-      this.sessions.get(sessionId).close();
+      const session = this.sessions.get(sessionId);
+      session.close();
+      this.oldSessions.set(sessionId, session);
       this.sessions.delete(sessionId);
     }
   }

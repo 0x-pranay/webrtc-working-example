@@ -78,7 +78,14 @@ io.on("connection", (socket) => {
       socket.user;
     const peerId = socket.peerId;
     const session = sessionManager.getOrCreateSession(requestStreamId);
+    //TODO: if webrtc connection is open but socketio is disconnected then wait for 1 min to reconnect without removing the peer, upon reconnection update the socket for the peer with the new socket object.
+    // even after 1 min if the socket is not reconnected then remove the peer
+    // If the webrtc connection is not open then remove the peer immediately
+    //
     session.removePeer(peerId);
+    if (session.peers.size === 0) {
+      sessionManager.removeSession(requestStreamId);
+    }
   });
 
   socket.on("message", handleSocketMessages.bind({ socket }));
@@ -125,7 +132,10 @@ async function handleSocketMessages(arg, callback) {
       session = sessionManager.getOrCreateSession(requestStreamId);
       console.log("peers:", session.getPeers());
       peer = session.peers.get(peerId);
-      await peer.handleAnswer(payload);
+      if (peer) {
+        await peer.handleAnswer(payload);
+      }
+      console.log("peer not found", peerId, peer);
       break;
     case "ice-candidate":
       session = sessionManager.getOrCreateSession(requestStreamId);
@@ -138,9 +148,13 @@ async function handleSocketMessages(arg, callback) {
       });
       // this.socket.emit("ice-candidate", payload);
       console.log("received ice-candidate", payload);
-      if (payload.candidate) {
+      if (payload.candidate && peer) {
         await peer.addIceCandidate(payload);
       }
+      if (!peer) {
+        console.error("peer not found", peerId, peer);
+      }
+
       break;
     case "leave":
       // this.socket.emit("leave", payload);
@@ -186,7 +200,7 @@ app.get("/sessions", async (req, res) => {
   // res.json({ sessions, sessionv2: sessionManager.listSessions() });
   const sockets = await io.fetchSockets();
   res.json({
-    sessions: sessionManager.listSessions(),
+    ...sessionManager.listSessions(),
     sockets: sockets.map((socket) => ({
       id: socket.id,
       requestStreamId: socket.user.requestStreamId,
