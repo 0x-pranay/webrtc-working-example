@@ -1,6 +1,6 @@
 //
-// const signalingServerUrl = "http://localhost:8080"; // Replace with your signaling server URL
-const signalingServerUrl = "https://api-dt1-dev-aps1.lightmetrics.co:3478"; // Replace with your signaling server URL
+const signalingServerUrl = "http://localhost:3478"; // Replace with your signaling server URL
+// const signalingServerUrl = "https://api-dt1-dev-aps1.lightmetrics.co:3478"; // Replace with your signaling server URL
 const peerId = generatePeerId(); // Generate a unique Peer ID
 let sessionId = ""; // Session ID will be dynamically set
 
@@ -704,7 +704,8 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // V2 live stream
 let socket = null;
-let localpc = null;
+let localpc;
+
 // const peerId = generatePeerId()
 async function requestLiveStream() {
   const clientId = document.getElementById("clientId").value || "lmqatesting2";
@@ -712,11 +713,23 @@ async function requestLiveStream() {
     document.getElementById("fleetId").value || "lmfleetAndroidTesting";
   const deviceId =
     document.getElementById("deviceId").value || "864281042305442";
+  let userId = document.getElementById("userId").value;
+  console.log("userId", userId);
+  if (userId === "" || userId === null) {
+    userId = peerId || generatePeerId();
+  }
 
+  document.getElementById("userId").value = userId;
   const requestStreamId = generateSessionId();
 
-  const token = await fetchToken({ clientId, fleetId, requestStreamId });
+  const token = await fetchToken({
+    clientId,
+    fleetId,
+    userId,
+    requestStreamId,
+  });
   await getIceServers();
+  await startLocalStream();
   console.log("got token", token);
 
   console.log("requestLiveStream clicked", {
@@ -726,28 +739,13 @@ async function requestLiveStream() {
     requestStreamId,
   });
   if (!socket) {
-    socket = io("http://localhost:3478", {
+    socket = io(signalingServerUrl, {
       path: "/webrtc/",
       auth: {
         token,
       },
     });
   }
-
-  const peerId = `${clientId}-${fleetId}-${deviceId}`;
-  socket.emit("hello");
-  socket.emit(
-    "join",
-    { peerId, clientId, fleetId, deviceId, requestStreamId },
-    (response) => {
-      console.log(response);
-      if (response.sessionId || response.requestStreamId) {
-        console.log("Joined Successfully");
-      } else {
-        alert("Failed to create session.");
-      }
-    },
-  );
 
   // listen to events from socket
   socket.on("offer", (data) => {
@@ -776,6 +774,7 @@ async function requestLiveStream() {
 }
 
 async function handleSocketMessages(arg, callback) {
+  // const socket = this.socket;
   console.log("message received", arg);
   console.log("socketId:", this.socket.id);
 
@@ -788,11 +787,15 @@ async function handleSocketMessages(arg, callback) {
     case "offer":
       // TODO: start here
       console.log("received offer", payload);
-      const localpc = new RTCPeerConnection({ iceServers: [iceServers] });
+
+      await startLocalStream();
+
+      localpc = new RTCPeerConnection({ iceServers: [iceServers] });
       peerConnections["remote-ss"] = localpc;
+      remotePeerId = "remote-ss";
 
       localpc.onicecandidate = async (event) => {
-        if (event.candidate) {
+        if (event.candidate && event.candidate?.candidate) {
           console.log("sending ice-candidate", event.candidate);
           this.socket.emit("message", {
             type: "ice-candidate",
@@ -837,6 +840,50 @@ async function handleSocketMessages(arg, callback) {
         }
       };
 
+      localpc.onconnectionstatechange = (event) => {
+        console.log(
+          "pc.onconnectionstatechange: ",
+          peerConnections[remotePeerId].connectionState,
+        );
+        switch (peerConnections[remotePeerId].connectionState) {
+          case "new":
+            console.log(
+              "pc.onconnectionstatechange. New connection with peer:",
+              remotePeerId,
+            );
+            break;
+          case "connected":
+            console.log(
+              "pc.onconnectionstatechange. Connected to peer:",
+              remotePeerId,
+            );
+            break;
+          case "disconnected":
+          case "failed":
+            console.log(
+              "pc.onconnectionstatechange. Disconnected from peer:",
+              remotePeerId,
+            );
+            break;
+          case "closed":
+            console.log("Connection closed with peer:", remotePeerId);
+            break;
+        }
+      };
+
+      if (localStream) {
+        localStream.getTracks().forEach(
+          (track) => localpc.addTrack(track, localStream), // Add each track to the connection
+        );
+      }
+
+      // send answer
+      const offer = new RTCSessionDescription(payload);
+      await localpc.setRemoteDescription(offer);
+      const answer = await localpc.createAnswer();
+      await localpc.setLocalDescription(answer);
+      this.socket.emit("message", { type: "answer", payload: answer });
+
       break;
     case "answer":
       // this.socket.emit("answer", payload);
@@ -844,6 +891,9 @@ async function handleSocketMessages(arg, callback) {
       break;
     case "ice-candidate":
       // this.socket.emit("ice-candidate", payload);
+      if (localpc) {
+        await localpc.addIceCandidate(new RTCIceCandidate(payload));
+      }
       console.log("received ice-candidate", payload);
       break;
     case "leave":
@@ -855,8 +905,8 @@ async function handleSocketMessages(arg, callback) {
   }
 }
 
-async function fetchToken({ clientId, fleetId, deviceId, requestStreamId }) {
-  const response = await fetch("http://localhost:3478/token", {
+async function fetchToken({ clientId, fleetId, userId, requestStreamId }) {
+  const response = await fetch(signalingServerUrl + "/token", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -864,7 +914,7 @@ async function fetchToken({ clientId, fleetId, deviceId, requestStreamId }) {
     body: JSON.stringify({
       clientId,
       fleetId,
-      userId: generatePeerId(),
+      userId,
       // deviceId,
       requestStreamId: "streamId#1",
     }),

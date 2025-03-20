@@ -1,9 +1,7 @@
 const express = require("express");
 const http = require("http");
-const axios = require("axios");
 const cors = require("cors");
 const path = require("path");
-const https = require("https");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
@@ -54,16 +52,20 @@ io.use((socket, next) => {
       return next(new Error("Authentication error: Invalid token"));
     }
     socket.user = decoded; // Attach token payload (e.g., user/device id) to socket
-    socket.peerId = `${socket.user.clientId}-${socket.user.fleetId}-${socket.user.deviceId ? socket.user.deviceId : socket.user.userId}`;
+    socket.peerId = `${socket.user.clientId}-${socket.user.fleetId}-${
+      socket.user.deviceId ? socket.user.deviceId : socket.user.userId
+    }`;
     next();
   });
 });
 
 io.on("connection", (socket) => {
-  console.log("connection", {
+  console.log("new connection", {
     transport: socket.conn.transport.name,
     socketId: socket.id,
+    requestStreamId: socket.user.requestStreamId,
     user: socket.user,
+    peerId: socket.peerId,
   });
 
   setInterval(() => {
@@ -84,47 +86,69 @@ io.on("connection", (socket) => {
 });
 
 async function handleSocketMessages(arg, callback) {
-  console.log("message received", arg);
-  console.log("this", this.socket.id);
+  // console.log("message received", arg);
+  console.log("message received", {
+    peerId: this.socket.peerId,
+    user: this.socket.user,
+    messageType: arg.type,
+  });
+  // if (peer) {
+  //   console.error("peer not found. failed", peerId, peer, arg);
+  //   if (callback) {
+  //     callback({ message: "received" });
+  //   }
+  //   return;
+  // }
 
-  if (callback) {
-    callback({ message: "received" });
-  }
-
-  const peerId = this.socket.peerId;
   const { requestStreamId } = this.socket.user;
-  const session = sessionManager.getOrCreateSession(requestStreamId);
-  const peer = session.peers.get(peerId);
-
-  // sendOffer: done
-  // handleAnswer
+  const { peerId } = this.socket;
+  let peer;
+  let session;
   const { type, payload } = arg;
   switch (type) {
     case "offer":
-      // this.socket.emit("offer", payload);
       console.log("received offer", payload);
+      session = sessionManager.getOrCreateSession(requestStreamId);
+      console.log("peers:", session.getPeers());
+      peer = session.peers.get(peerId);
       const offer = await peer.receiveOfferAndSendAnswer(payload);
-      socket.emit({ type: "answer", payload: offer });
+      this.socket.emit({ type: "answer", payload: offer });
       break;
     case "answer":
       // this.socket.emit("answer", payload);
       console.log("received answer", payload);
+      session = sessionManager.getOrCreateSession(requestStreamId);
+      console.log("peers:", session.getPeers());
+      peer = session.peers.get(peerId);
       await peer.handleAnswer(payload);
       break;
     case "ice-candidate":
+      session = sessionManager.getOrCreateSession(requestStreamId);
+      peer = session.peers.get(peerId);
+      console.log("handling ice-candidates", {
+        // peerId,
+        // requestStreamId,
+        session,
+        peer,
+      });
       // this.socket.emit("ice-candidate", payload);
       console.log("received ice-candidate", payload);
-      await peer.addIceCandidate(payload);
+      if (payload.candidate) {
+        await peer.addIceCandidate(payload);
+      }
       break;
     case "leave":
-      this.socket.emit("leave", payload);
+      // this.socket.emit("leave", payload);
+      console.log("received leave", payload);
       break;
     default:
       console.log("Unknown message type", type);
   }
-  // sendIceCandidates
-  // handleIceCandidates
   // handleLeave
+
+  if (callback) {
+    callback({ message: "received" });
+  }
 }
 
 function getSocketByStreamId(streamId) {
@@ -153,13 +177,23 @@ app.post("/token", (req, res) => {
   res.json({ token });
 });
 
-app.get("/sessions", (req, res) => {
+app.get("/sessions", async (req, res) => {
   // res.json({ sessions, sessionv2: sessionManager.listSessions() });
+  const sockets = await io.fetchSockets();
   res.json({
-    todo: "todo",
     sessions: sessionManager.listSessions(),
-    sockets: io.fetchSockets(),
+    sockets: sockets.map((socket) => ({
+      id: socket.id,
+      requestStreamId: socket.user.requestStreamId,
+      user: socket.user,
+    })),
   });
+  // res.json({
+  //   sessions: sessionManager.listSessions(),
+  //   // sockets: await io.fetchSockets(),
+  //   connectedClients: io.engine.connectedClients,
+  //   connectedClients2: io.sockets.size,
+  // });
 });
 
 const port = process.env.PORT || 3478;

@@ -15,11 +15,7 @@ class PeerConnection {
     this.session = session;
     this.socket = socket;
     this.pc = null;
-    this.tracks = null;
-    // this.pc.console // Do log all the connections states for the peer
-    //   .log(
-    //     `Initiating connection for peer ${this.peerId} in session: ${this.session}`,
-    //   );
+    this.tracks = {};
   }
 
   async create() {
@@ -30,7 +26,9 @@ class PeerConnection {
     this.pc.onicecandidate = this.onIceCandidate;
     this.pc.ontrack = this.onTrack;
     this.pc.onconnectionstatechange = () => {
-      console.log(`Connection state for ${socket.id}: ${pc.connectionState}`);
+      console.log(
+        `Connection state for ${this.socket.id}: ${this.pc.connectionState}`,
+      );
     };
 
     return this.pc;
@@ -38,8 +36,8 @@ class PeerConnection {
 
   onIceCandidate = (event) => {
     if (event.candidate) {
+      console.log("sending ice candidate", event.candidate.candidate);
       // Send the candidate to the remote peer
-      console.log("TODO: Sending ICE candidate");
       this.socket.emit("message", {
         type: "ice-candidate",
         // requestStreamId: this.session.sessionId,
@@ -64,13 +62,17 @@ class PeerConnection {
         );
         peer.pc.addTrack(event.track);
       } else {
+        console.log("event.track", event.track);
         this.tracks[event.track.id] = event.track;
       }
     });
   };
 
   async createOffer() {
-    const offer = await this.pc.createOffer();
+    const offer = await this.pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true,
+    });
     await this.pc.setLocalDescription(offer);
     console.log("Sending SDP offer");
     return offer;
@@ -92,8 +94,16 @@ class PeerConnection {
     await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
   };
 
-  addIceCandidate() {
+  addIceCandidate(candidate) {
     this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+  }
+
+  toJSON() {
+    return {
+      peerId: this.peerId,
+      isDevice: this.isDevice,
+      pcState: this.pc.connectionState,
+    };
   }
 }
 
@@ -120,6 +130,13 @@ class Session {
     const { requestStreamId, clientId, fleetId, userId, deviceId } =
       socket.user;
     const peerId = socket.peerId;
+    console.log("addPeerFromSocket", {
+      requestStreamId,
+      clientId,
+      fleetId,
+      userId,
+      deviceId,
+    });
 
     // TODO: check if the webrtc connection is already established and open
     if (!this.peers.has(peerId)) {
@@ -140,6 +157,8 @@ class Session {
           console.log("offer sent to peer", peerId, response.status);
         },
       );
+
+      this.peers.set(peerId, peer);
     }
   }
 
@@ -147,24 +166,28 @@ class Session {
     return this.peers.keys();
   }
 
-  getDevicePeer() {
-    return this.peers.keys().map((peerId) => {
-      if (this.peers.get(peerId).isDevice) {
-        return this.peers.get(peerId);
-      }
-    });
+  getDevicePeers() {
+    return Array.from(this.peers)
+      .map(([peerId, peer]) => {
+        if (peer.isDevice) {
+          return peer;
+        }
+        return undefined;
+      })
+      .filter((peer) => peer);
   }
 
-  getWebClientPeer() {
-    return this.peers.keys().map((peerId) => {
-      if (!this.peers.get(peerId).isDevice) {
-        return this.peers.get(peerId);
+  getWebClientPeers() {
+    return Array.from(this.peers).map(([peerId, peer]) => {
+      if (!peer.isDevice) {
+        return peer;
       }
     });
   }
 
   getPeer(peerId) {
-    return this.peers.get(peerId);
+    // return this.peers.get(peerId);
+    return Array.from(this.peers);
   }
 
   close() {
@@ -198,7 +221,15 @@ class SessionManager {
 
   listSessions() {
     return Array.from(this.sessions).map(([sessionId, session]) => {
-      return { sessionId, peers: session.getPeers() };
+      return {
+        sessionId,
+        // peers: session.getPeers(),
+        peerCount: session.peers.size,
+        devicePeers: session.getDevicePeers(),
+        webClientPeers: session.getWebClientPeers(),
+        // session,
+        sessionPeers: session.peers,
+      };
     });
   }
 

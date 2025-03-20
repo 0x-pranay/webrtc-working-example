@@ -11,11 +11,29 @@
   <body>
     <h2>Request Live Stream</h2>
     <label>Client ID:</label>
-    <input type="text" id="clientId" placeholder="Enter Client ID" /><br />
+    <input
+      type="text"
+      id="clientId"
+      placeholder="Enter Client ID"
+      value="lmpresales"
+    /><br />
     <label>Fleet ID:</label>
-    <input type="text" id="fleetId" placeholder="Enter Fleet ID" /><br />
-    <label>Device ID:</label>
-    <input type="text" id="deviceId" placeholder="Enter Device ID" /><br />
+    <input
+      type="text"
+      id="fleetId"
+      placeholder="Enter Fleet ID"
+      value="lmfleet003"
+    /><br />
+
+    <label>UserId:</label>
+    <input type="text" id="userId" placeholder="Enter userId:" /><br />
+    <label>Target Device ID:</label>
+    <input
+      type="text"
+      id="deviceId"
+      placeholder="Enter target Device ID"
+      value="864281042305442"
+    /><br />
     <button id="requestLiveStream" onclick="requestLiveStream()">
       Request Live Stream
     </button>
@@ -26,7 +44,7 @@
     >
       Stop Live Stream
     </button>
-    <p>Session ID: <span id="sessionId"></span></p>
+    <!-- <p>Session ID: <span id="sessionId"></span></p> -->
 
     <div id="sessionControls">
       <label for="sessionIdInput">Session ID:</label>
