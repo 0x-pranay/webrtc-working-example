@@ -82,10 +82,10 @@ io.on("connection", (socket) => {
     // even after 1 min if the socket is not reconnected then remove the peer
     // If the webrtc connection is not open then remove the peer immediately
     //
-    session.removePeer(peerId);
-    if (session.peers.size === 0) {
-      sessionManager.removeSession(requestStreamId);
-    }
+    // session.removePeer(peerId);
+    // if (session.peers.size === 0) {
+    //   sessionManager.removeSession(requestStreamId);
+    // }
   });
 
   socket.on("message", handleSocketMessages.bind({ socket }));

@@ -184,7 +184,15 @@ class PeerConnection {
       peerId: this.peerId,
       isDevice: this.isDevice,
       pcState: this.pc.connectionState,
-      tracks: this.tracks,
+      tracks: Object.keys(this.tracks).map((trackId) => {
+        const track = this.tracks[trackId];
+        return {
+          id: track.id,
+          kind: track.kind,
+          label: track.label,
+          enabled: track.enabled,
+        };
+      }),
       joinDate: this.joinDate,
       leftDate: this.leftDate,
       socketState: this.socketState,
