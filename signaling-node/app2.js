@@ -96,7 +96,7 @@ io.on("connection", (socket) => {
 });
 
 async function handleSocketMessages(arg, callback) {
-  // console.log("message received", arg);
+  console.log("message received", arg);
   console.log("message received", {
     peerId: this.socket.peerId,
     user: this.socket.user,
@@ -117,19 +117,20 @@ async function handleSocketMessages(arg, callback) {
   const { type, payload } = arg;
   switch (type) {
     case "offer":
-      console.log("received offer", payload);
+      console.log("received offer");
       session = sessionManager.getOrCreateSession(requestStreamId);
-      console.log("peers:", session.getPeers());
+      // console.log("peers:", session.getPeers());
       peer = session.peers.get(peerId);
       const offer = await peer.receiveOfferAndSendAnswer(payload);
       this.socket.emit({ type: "answer", payload: offer });
       break;
     case "answer":
       // this.socket.emit("answer", payload);
-      console.log("received answer", payload);
+      console.log("received answer");
       session = sessionManager.getOrCreateSession(requestStreamId);
-      console.log("peers:", session.getPeers());
+      // console.log("peers:", session.getPeers());
       peer = session.peers.get(peerId);
+	console.log('peer', peer.isDevice);
       if (peer) {
         await peer.handleAnswer(payload);
       }
@@ -139,13 +140,15 @@ async function handleSocketMessages(arg, callback) {
       session = sessionManager.getOrCreateSession(requestStreamId);
       peer = session.peers.get(peerId);
       console.log("handling ice-candidates", {
-        // peerId,
+        peerId,
         // requestStreamId,
-        session,
-        peer,
+        // session,
+        //peer,
+	isDevice: peer.isDevice
       });
       // this.socket.emit("ice-candidate", payload);
-      console.log("received ice-candidate", payload);
+      console.log("received ice-candidate");
+      // console.log("received ice-candidate", payload);
       if (payload.candidate && peer) {
         await peer.addIceCandidate(payload);
       }
