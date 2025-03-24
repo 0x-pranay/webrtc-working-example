@@ -104,7 +104,7 @@ async function handleSocketMessages(arg, callback) {
   });
   // if (peer) {
   //   console.error("peer not found. failed", peerId, peer, arg);
-  //   if (callback) {
+  //   if (callback) {pxstaging
   //     callback({ message: "received" });
   //   }
   //   return;
@@ -130,7 +130,7 @@ async function handleSocketMessages(arg, callback) {
       session = sessionManager.getOrCreateSession(requestStreamId);
       // console.log("peers:", session.getPeers());
       peer = session.peers.get(peerId);
-	console.log('peer', peer.isDevice);
+      console.log("peer", peer.isDevice);
       if (peer) {
         await peer.handleAnswer(payload);
       }
@@ -144,7 +144,7 @@ async function handleSocketMessages(arg, callback) {
         // requestStreamId,
         // session,
         //peer,
-	isDevice: peer.isDevice
+        isDevice: peer.isDevice,
       });
       // this.socket.emit("ice-candidate", payload);
       console.log("received ice-candidate");

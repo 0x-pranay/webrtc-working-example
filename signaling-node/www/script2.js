@@ -14,6 +14,7 @@ let offers = {};
 let receivedOffers = {};
 sentAnswers = {};
 let answers = {};
+let isDevice = false;
 
 const lastBytesReceived = {};
 const lastTimestamp = {};
@@ -107,7 +108,7 @@ async function getIceServers() {
 async function startLocalStream() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
+      video: isDevice ? true : false,
       audio: true,
     });
     document.getElementById("localVideo").srcObject = localStream;
@@ -199,6 +200,10 @@ function createPeerConnection(remotePeerId) {
 
   peerConnections[remotePeerId].ontrack = async (event) => {
     console.log("pc.ontrack event", event, "streams: ", event.streams.length);
+
+    if (event.track && event.streams.length === 0) {
+      event.streams[0] = new MediaStream([event.track]);
+    }
 
     if (event.streams && event.streams[0]) {
       console.log(
@@ -487,7 +492,7 @@ copySessionIdButton.onclick = () => {
 // --- Helper Functions ---
 // Add remote video element to the page
 function addRemoteVideoStream(peerId, tracks) {
-  console.log("Adding remote stream with id ", peerId);
+  console.log("Adding remote video stream with id ", peerId);
   const remoteVideosDiv = document.getElementById("remoteVideos");
   let videoElement = document.getElementById(`remoteVideo_${peerId}`);
   // let audioElement = document.getElementById(`remoteAudio_${peerId}`);
@@ -739,6 +744,9 @@ async function requestLiveStream(requestStreamId) {
   let userId;
   let deviceId;
 
+  // global
+  isDevice = deviceIdChecked;
+
   console.log("userId", userId);
   if ((userIdOrDeviceId === "" || userIdOrDeviceId === null) && userIdChecked) {
     userId = peerId || generatePeerId();
@@ -852,6 +860,8 @@ async function handleSocketMessages(arg, callback) {
           event,
           "streams: ",
           event.streams.length,
+          "track",
+          event.track,
         );
 
         if (event.streams && event.streams[0]) {
@@ -872,10 +882,10 @@ async function handleSocketMessages(arg, callback) {
           }
         } else if (event.track) {
           if (event.track.kind === "audio") {
-            addRemoteAudioStream(remotePeerId, [event.track]);
+            addRemoteAudioStream(event.track.id, [event.track]);
           }
           if (event.track.kind === "video") {
-            addRemoteVideoStream(remotePeerId, [event.track]);
+            addRemoteVideoStream(event.track.id, [event.track]);
           }
         } else {
           console.log("no stream");

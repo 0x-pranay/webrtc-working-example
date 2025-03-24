@@ -10,6 +10,7 @@ const fs = require("fs");
 const { spawn } = require("child_process");
 
 const { getIceServers } = require("./turn.js");
+const MAX_WEB_CLIENTS = 3;
 
 class PeerConnection {
   constructor(peerId, peerType, socket, session) {
@@ -19,7 +20,7 @@ class PeerConnection {
     this.socket = socket;
     this.socketState = socket.readyState;
     this.joinDate = new Date().toISOString();
-    this.leftDate = null;
+    // this.leftDate = null;
     this.pc = null;
     this.tracks = {};
   }
@@ -30,7 +31,7 @@ class PeerConnection {
       iceServers: [iceServers],
     });
     this.pc.onicecandidate = this.onIceCandidate;
-    this.pc.ontrack = this.onTrack;
+    this.pc.ontrack = this.onTrackV2;
     this.pc.onconnectionstatechange = () => {
       console.log(
         `Connection state for ${this.socket.id}: ${this.pc.connectionState}`,
@@ -53,6 +54,31 @@ class PeerConnection {
       // All ICE candidates have been sent
       console.log("ICE candidate gathering complete");
     }
+  };
+
+  onTrackV2 = (event) => {
+    console.log("ontrack event", {
+      peerId: this.peerId,
+      isDevice: this.isDevice,
+      eventTrack: event.track,
+    });
+
+    this.tracks[event.track.id] = event.track;
+    this.session.peers.forEach((peer, targetPeerId) => {
+      if (targetPeerId !== this.peerId) {
+        peer.pc.addTrack(event.track);
+      }
+    });
+    this.session.activityLog.push({
+      event: "track-added",
+      timestamp: new Date().toISOString(),
+      track: {
+        id: event.track.id,
+        kind: event.track.kind,
+        label: event.track.label,
+      },
+      peerId: this.peerId,
+    });
   };
 
   onTrack = (event) => {
@@ -133,22 +159,53 @@ class PeerConnection {
 
   async createOffer() {
     if (this.isDevice) {
-      const audioSource = new RTCAudioSource();
-      const audioTrack = audioSource.createTrack();
-      this.pc.addTrack(audioTrack);
+      for (let i = 0; i < MAX_WEB_CLIENTS; i++) {
+        // receive audio from web clients
+        this.pc.addTransceiver("audio", { direction: "sendonly" }); // audio from webclient
+        // temp. receive video from web clients
+        //  this.pc.addTransceiver("video", { direction: "recvonly" });
+      }
+      // send auid and video to web clients
+      this.pc.addTransceiver("audio", { direction: "recvonly" }); // from device
+      this.pc.addTransceiver("video", { direction: "recvonly" });
     } else {
-      const audioSource = new RTCAudioSource();
-      const videoSource = new RTCVideoSource();
-      const audioTrack = audioSource.createTrack();
-      const videoTrack = videoSource.createTrack();
-      this.pc.addTrack(audioTrack);
-      this.pc.addTrack(videoTrack);
+      this.pc.addTransceiver("video", { direction: "sendonly" });
+      this.pc.addTransceiver("audio", { direction: "sendonly" });
+
+      this.pc.addTransceiver("audio", { direction: "recvonly" });
+
+      // for (let i = 0; i < MAX_WEB_CLIENTS - 1; i++) {
+      //   // receive audio from web clients
+      //   this.pc.addTransceiver("audio", { direction: "sendonly" });
+      //   // temp. receive video from web clients
+      //   // this.pc.addTransceiver("video", { direction: "recvonly" });
+      // }
     }
 
-    const offer = await this.pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: true,
+    // add the existing tracks
+    this.session.peers.forEach((peer, targetPeerId) => {
+      if (targetPeerId === this.peerId) {
+        return;
+      }
+      for (const [trackId, track] of Object.entries(peer.tracks)) {
+        this.pc.addTrack(track);
+      }
     });
+
+    // if (this.isDevice) {
+    //   const audioSource = new RTCAudioSource();
+    //   const audioTrack = audioSource.createTrack();
+    //   this.pc.addTrack(audioTrack);
+    // } else {
+    //   const audioSource = new RTCAudioSource();
+    //   const videoSource = new RTCVideoSource();
+    //   const audioTrack = audioSource.createTrack();
+    //   const videoTrack = videoSource.createTrack();
+    //   this.pc.addTrack(audioTrack);
+    //   this.pc.addTrack(videoTrack);
+    // }
+
+    const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     console.log("Sending SDP offer");
     return offer;
@@ -216,14 +273,6 @@ class Session {
     this.activityLog = [];
   }
 
-  // async addPeer(peerId, peerType) {
-  //   if (!this.peers.has(peerId)) {
-  //     const peer = new PeerConnection(peerId, peerType, this);
-  //     this.peers.set(peerId, peer);
-  //     return peer;
-  //   }
-  // }
-
   async addPeerFromSocket(socket) {
     const { requestStreamId, clientId, fleetId, userId, deviceId } =
       socket.user;
@@ -246,10 +295,7 @@ class Session {
 
       await peer.create();
       // send offer to the connected peer
-      const offer = await peer.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
-      });
+      const offer = await peer.createOffer();
       socket.emit(
         "message",
         {
