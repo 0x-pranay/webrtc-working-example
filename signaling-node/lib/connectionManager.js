@@ -280,6 +280,13 @@ class Session {
 
   removePeer(peerId) {
     this.peers.delete(peerId);
+    this.activityLog.push({
+      event: "peer-disconnected",
+      timestamp: new Date().toISOString(),
+      peer: {
+        peerId,
+      },
+    });
   }
 
   handleSocketDisconnects(socket) {
