@@ -99,8 +99,8 @@ class PeerConnection {
         } else if (!this.isDevice && peer.isDevice) {
           peer.pc.getSenders().forEach((sender) => {
             if (
-              sender.track.kind === event.track.kind &&
-              sender.track.kind === "audio"
+              sender.track?.kind === event.track.kind &&
+              sender.track?.kind === "audio"
             ) {
               console.log("replacing audio track to clients");
               sender.replaceTrack(event.track);
@@ -369,6 +369,10 @@ class SessionManager {
     return this.sessions.has(sessionId)
       ? this.sessions.get(sessionId)
       : this.createSession(sessionId);
+  }
+
+  getSession(sessionId) {
+    return this.sessions.get(sessionId);
   }
 
   createSession(sessionId) {

@@ -29,8 +29,6 @@ app.use(express.static(path.join(__dirname, "www")));
 
 const server = http.createServer(app);
 
-const sessions = new Map();
-
 /* Socket IO */
 
 const io = new socketio.Server(server, {
@@ -77,15 +75,15 @@ io.on("connection", (socket) => {
     const { requestStreamId, clientId, fleetId, userId, deviceId } =
       socket.user;
     const peerId = socket.peerId;
-    const session = sessionManager.getOrCreateSession(requestStreamId);
+    const session = sessionManager.getSession(requestStreamId);
     //TODO: if webrtc connection is open but socketio is disconnected then wait for 1 min to reconnect without removing the peer, upon reconnection update the socket for the peer with the new socket object.
     // even after 1 min if the socket is not reconnected then remove the peer
     // If the webrtc connection is not open then remove the peer immediately
     //
-    // session.removePeer(peerId);
-    // if (session.peers.size === 0) {
-    //   sessionManager.removeSession(requestStreamId);
-    // }
+    session.removePeer(peerId);
+    if (session.peers.size === 0) {
+      sessionManager.removeSession(requestStreamId);
+    }
   });
 
   socket.on("message", handleSocketMessages.bind({ socket }));

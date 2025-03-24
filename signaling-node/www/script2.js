@@ -26,7 +26,7 @@ let bandwidthCap = 0; // No cap by default
 let iceServers;
 
 // Get DOM elements
-const startStopButton = document.getElementById("startStopButton");
+// const startStopButton = document.getElementById("startStopButton");
 const sessionIdInput = document.getElementById("sessionIdInput");
 const joinSessionButton = document.getElementById("joinSessionButton");
 const copySessionIdButton = document.getElementById("copySessionIdButton");
@@ -43,53 +43,53 @@ const supportsSetCodecPreferences =
   window.RTCRtpTransceiver &&
   "setCodecPreferences" in window.RTCRtpTransceiver.prototype;
 
-function connectToSignalingServer() {
-  eventSource = new EventSource(
-    `${signalingServerUrl}/events/${sessionId}/${peerId}`,
-  );
+// function connectToSignalingServer() {
+//   eventSource = new EventSource(
+//     `${signalingServerUrl}/events/${sessionId}/${peerId}`,
+//   );
+//
+//   eventSource.onopen = () => {
+//     console.log("Connection to the signaling server (SSE) is open");
+//     // registerWithServer();
+//   };
+//
+//   eventSource.onmessage = (event) => {
+//     handleSignalingMessage(event);
+//   };
+//
+//   eventSource.onerror = (error) => {
+//     console.error("SSE error:", error);
+//   };
+//
+//   eventSource.onclose = () => {
+//     console.log("Connection to the the signaling server (SSE) is closed");
+//   };
+// }
 
-  eventSource.onopen = () => {
-    console.log("Connection to the signaling server (SSE) is open");
-    // registerWithServer();
-  };
-
-  eventSource.onmessage = (event) => {
-    handleSignalingMessage(event);
-  };
-
-  eventSource.onerror = (error) => {
-    console.error("SSE error:", error);
-  };
-
-  eventSource.onclose = () => {
-    console.log("Connection to the the signaling server (SSE) is closed");
-  };
-}
-
-async function registerWithServer() {
-  return fetch(`${signalingServerUrl}/register/${sessionId}/${peerId}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ clientType: "browser" }),
-  })
-    .then((response) => response.json())
-    .then((data) => {
-      // console.log("Registration response:", data);
-      if (data.message === "Registered") {
-        console.log("Successfully registered with the signaling server.");
-        return true; // Indicate successful registration
-      } else {
-        console.error("Registration failed.");
-        return false; // Indicate registration failure
-      }
-    })
-    .catch((error) => {
-      console.error("Error during registration:", error);
-      return false; // Indicate registration failure
-    });
-}
+// async function registerWithServer() {
+//   return fetch(`${signalingServerUrl}/register/${sessionId}/${peerId}`, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({ clientType: "browser" }),
+//   })
+//     .then((response) => response.json())
+//     .then((data) => {
+//       // console.log("Registration response:", data);
+//       if (data.message === "Registered") {
+//         console.log("Successfully registered with the signaling server.");
+//         return true; // Indicate successful registration
+//       } else {
+//         console.error("Registration failed.");
+//         return false; // Indicate registration failure
+//       }
+//     })
+//     .catch((error) => {
+//       console.error("Error during registration:", error);
+//       return false; // Indicate registration failure
+//     });
+// }
 
 async function getIceServers() {
   try {
@@ -112,7 +112,9 @@ async function startLocalStream() {
     });
     document.getElementById("localVideo").srcObject = localStream;
     isStreaming = true;
-    startStopButton.textContent = "Stop Stream";
+    // startStopButton.textContent = "Stop Stream";
+    joinSessionButton.textContent = "Stop Stream";
+    // joinSessionButton.disabled = true;
     toggleAudioButton.disabled = false;
     toggleVideoButton.disabled = false;
     // startLocalStats();
@@ -127,49 +129,54 @@ function stopLocalStream() {
     document.getElementById("localVideo").srcObject = null;
     localStream = null;
     isStreaming = false;
-    startStopButton.textContent = "Start Stream";
+    // startStopButton.textContent = "Start Stream";
+    joinSessionButton.textContent = "Start Stream";
     toggleAudioButton.disabled = true;
     toggleVideoButton.disabled = true;
     localResolutionDisplay.textContent = "";
     localBitrateDisplay.textContent = "";
   }
-}
 
-async function handleSignalingMessage(event) {
-  try {
-    const message = JSON.parse(event.data);
-    const { type, senderId, payload } = message;
-    console.log("received sse-event:", message);
-
-    switch (type) {
-      case "new-peer":
-        console.log("New peer joined:", senderId);
-        createPeerConnection(senderId);
-        // Send an offer to the newly joined peers
-        sendOffer(senderId);
-        break;
-      case "offer":
-        console.log("Received offer from:", senderId);
-        handleOffer(senderId, payload);
-        break;
-      case "answer":
-        console.log("Received answer from:", message.senderId);
-        handleAnswer(senderId, payload);
-        break;
-      case "ice-candidate":
-        console.log("Received ICE candidate from:", message.senderId);
-        handleIceCandidate(senderId, payload);
-        break;
-      // case "ping":
-      //   console.log("Received ping: ", message);
-      //   break;
-      default:
-        console.log("Received unknown message:", message);
-    }
-  } catch (error) {
-    console.error("Error parsing SSE message:", error);
+  if (localpc) {
+    localpc.close();
   }
 }
+
+// async function handleSignalingMessage(event) {
+//   try {
+//     const message = JSON.parse(event.data);
+//     const { type, senderId, payload } = message;
+//     console.log("received sse-event:", message);
+//
+//     switch (type) {
+//       case "new-peer":
+//         console.log("New peer joined:", senderId);
+//         createPeerConnection(senderId);
+//         // Send an offer to the newly joined peers
+//         sendOffer(senderId);
+//         break;
+//       case "offer":
+//         console.log("Received offer from:", senderId);
+//         handleOffer(senderId, payload);
+//         break;
+//       case "answer":
+//         console.log("Received answer from:", message.senderId);
+//         handleAnswer(senderId, payload);
+//         break;
+//       case "ice-candidate":
+//         console.log("Received ICE candidate from:", message.senderId);
+//         handleIceCandidate(senderId, payload);
+//         break;
+//       // case "ping":
+//       //   console.log("Received ping: ", message);
+//       //   break;
+//       default:
+//         console.log("Received unknown message:", message);
+//     }
+//   } catch (error) {
+//     console.error("Error parsing SSE message:", error);
+//   }
+// }
 
 function createPeerConnection(remotePeerId) {
   console.log("creating peer connection with ", remotePeerId);
@@ -285,92 +292,92 @@ function createPeerConnection(remotePeerId) {
   }
 }
 
-async function sendOffer(remotePeerId, offer) {
-  const [transceiver1] = peerConnections[remotePeerId].getTransceivers();
-  console.log("before sending offer", transceiver1);
+// async function sendOffer(remotePeerId, offer) {
+//   const [transceiver1] = peerConnections[remotePeerId].getTransceivers();
+//   console.log("before sending offer", transceiver1);
+//
+//   console.log("transceiver1: ", transceiver1);
+//
+//   console.log("creating offer with ", remotePeerId);
+//   // const offer = await peerConnections[remotePeerId].createOffer();
+//   if (!offer) {
+//     offer = await peerConnections[remotePeerId].createOffer({
+//       offerToReceiveAudio: true,
+//       offerToReceiveVideo: true,
+//     });
+//   }
+//
+//   const modifiedOffer = new RTCSessionDescription({
+//     type: offer.type,
+//     // sdp: preferH264(offer.sdp),
+//     sdp: offer.sdp,
+//   });
+//
+//   console.log("offer", offer, "modifiedOffer", modifiedOffer);
+//   await peerConnections[remotePeerId].setLocalDescription(modifiedOffer);
+//   sendSignalingMessage(remotePeerId, "offer", modifiedOffer);
+//
+//   offers[remotePeerId] = modifiedOffer;
+// }
 
-  console.log("transceiver1: ", transceiver1);
+// async function handleOffer(remotePeerId, offer) {
+//   console.log("handling offer with ", remotePeerId);
+//   if (!peerConnections[remotePeerId]) {
+//     createPeerConnection(remotePeerId);
+//   }
+//
+//   receivedOffers[remotePeerId] = new RTCSessionDescription(offer);
+//
+//   await peerConnections[remotePeerId].setRemoteDescription(
+//     new RTCSessionDescription(offer),
+//   );
+//   const answer = await peerConnections[remotePeerId].createAnswer();
+//   await peerConnections[remotePeerId].setLocalDescription(answer);
+//   sendSignalingMessage(remotePeerId, "answer", answer);
+//   sentAnswers[remotePeerId] = answer;
+// }
 
-  console.log("creating offer with ", remotePeerId);
-  // const offer = await peerConnections[remotePeerId].createOffer();
-  if (!offer) {
-    offer = await peerConnections[remotePeerId].createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: true,
-    });
-  }
+// async function handleAnswer(remotePeerId, answer) {
+//   console.log("handling answer with ", remotePeerId);
+//   if (peerConnections[remotePeerId] && !peerConnections["dummy"]) {
+//     await peerConnections[remotePeerId].setRemoteDescription(
+//       new RTCSessionDescription(answer),
+//     );
+//   }
+//   answers[remotePeerId] = new RTCSessionDescription(answer);
+// }
 
-  const modifiedOffer = new RTCSessionDescription({
-    type: offer.type,
-    // sdp: preferH264(offer.sdp),
-    sdp: offer.sdp,
-  });
+// async function handleIceCandidate(remotePeerId, iceCandidate) {
+//   try {
+//     console.log("handling ice candidate with ", remotePeerId);
+//     if (peerConnections[remotePeerId]) {
+//       await peerConnections[remotePeerId].addIceCandidate(
+//         new RTCIceCandidate(iceCandidate),
+//       );
+//     }
+//   } catch (e) {
+//     console.error("Error adding received ICE candidate", e, iceCandidate);
+//   }
+// }
 
-  console.log("offer", offer, "modifiedOffer", modifiedOffer);
-  await peerConnections[remotePeerId].setLocalDescription(modifiedOffer);
-  sendSignalingMessage(remotePeerId, "offer", modifiedOffer);
+// function sendIceCandidate(remotePeerId, iceCandidate) {
+//   console.log("sending iceCandidates", remotePeerId, iceCandidate);
+//   sendSignalingMessage(remotePeerId, "ice-candidate", iceCandidate);
+// }
 
-  offers[remotePeerId] = modifiedOffer;
-}
-
-async function handleOffer(remotePeerId, offer) {
-  console.log("handling offer with ", remotePeerId);
-  if (!peerConnections[remotePeerId]) {
-    createPeerConnection(remotePeerId);
-  }
-
-  receivedOffers[remotePeerId] = new RTCSessionDescription(offer);
-
-  await peerConnections[remotePeerId].setRemoteDescription(
-    new RTCSessionDescription(offer),
-  );
-  const answer = await peerConnections[remotePeerId].createAnswer();
-  await peerConnections[remotePeerId].setLocalDescription(answer);
-  sendSignalingMessage(remotePeerId, "answer", answer);
-  sentAnswers[remotePeerId] = answer;
-}
-
-async function handleAnswer(remotePeerId, answer) {
-  console.log("handling answer with ", remotePeerId);
-  if (peerConnections[remotePeerId] && !peerConnections["dummy"]) {
-    await peerConnections[remotePeerId].setRemoteDescription(
-      new RTCSessionDescription(answer),
-    );
-  }
-  answers[remotePeerId] = new RTCSessionDescription(answer);
-}
-
-async function handleIceCandidate(remotePeerId, iceCandidate) {
-  try {
-    console.log("handling ice candidate with ", remotePeerId);
-    if (peerConnections[remotePeerId]) {
-      await peerConnections[remotePeerId].addIceCandidate(
-        new RTCIceCandidate(iceCandidate),
-      );
-    }
-  } catch (e) {
-    console.error("Error adding received ICE candidate", e, iceCandidate);
-  }
-}
-
-function sendIceCandidate(remotePeerId, iceCandidate) {
-  console.log("sending iceCandidates", remotePeerId, iceCandidate);
-  sendSignalingMessage(remotePeerId, "ice-candidate", iceCandidate);
-}
-
-function sendSignalingMessage(remotePeerId, type, data) {
-  fetch(`${signalingServerUrl}/message/${sessionId}/${peerId}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      // target: remotePeerId,
-      type: type,
-      payload: data,
-    }),
-  });
-}
+// function sendSignalingMessage(remotePeerId, type, data) {
+//   fetch(`${signalingServerUrl}/message/${sessionId}/${peerId}`, {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({
+//       // target: remotePeerId,
+//       type: type,
+//       payload: data,
+//     }),
+//   });
+// }
 
 async function startStream(sessionId) {
   await getIceServers();
@@ -383,17 +390,17 @@ async function startStream(sessionId) {
   }
 }
 
-startStopButton.onclick = async () => {
-  if (isStreaming) {
-    stopLocalStream();
-    eventSource.close();
-  } else {
-    //New order
-    sessionId = generateSessionId();
-    sessionIdInput.value = sessionId; // Update the input field with the session ID
-    await startStream(sessionId);
-  }
-};
+// startStopButton.onclick = async () => {
+//   if (isStreaming) {
+//     stopLocalStream();
+//     eventSource.close();
+//   } else {
+//     //New order
+//     sessionId = generateSessionId();
+//     sessionIdInput.value = sessionId; // Update the input field with the session ID
+//     await startStream(sessionId);
+//   }
+// };
 
 toggleAudioButton.onclick = () => {
   audioEnabled = !audioEnabled;
@@ -453,12 +460,17 @@ function updateLocalStats() {
 }
 
 joinSessionButton.onclick = async () => {
-  sessionId = sessionIdInput.value.trim();
-  if (!sessionId) {
-    sessionId = generateSessionId();
+  if (!isStreaming) {
+    sessionId = sessionIdInput.value.trim();
+    if (!sessionId) {
+      sessionId = generateSessionId();
+    }
+    sessionIdInput.value = sessionId;
+    // await startStream(sessionId);
+    await requestLiveStream(sessionId);
+  } else {
+    alert("Please stop the current stream before joining a new session");
   }
-  sessionIdInput.value = sessionId;
-  await startStream(sessionId);
 };
 
 copySessionIdButton.onclick = () => {
@@ -535,6 +547,7 @@ function startLocalStats() {
     updateLocalStats();
   }, 1000);
 }
+
 async function updateRemoteStats(peerId) {
   if (peerConnections[peerId]) {
     try {
@@ -707,27 +720,63 @@ let socket = null;
 let localpc;
 
 // const peerId = generatePeerId()
-async function requestLiveStream() {
+async function requestLiveStream(requestStreamId) {
+  // if (!requestStreamId) {
+  //   requestStreamId = generateSessionId();
+  //   sessionIdInput.value = requestStreamId;
+  // }
+
   const clientId = document.getElementById("clientId").value || "lmqatesting2";
   const fleetId =
     document.getElementById("fleetId").value || "lmfleetAndroidTesting";
-  const deviceId =
-    document.getElementById("deviceId").value || "864281042305442";
-  let userId = document.getElementById("userId").value;
+  // const deviceId =
+  //   document.getElementById("deviceId").value || "864281042305442";
+  const userIdChecked = document.getElementById("requestType").checked;
+  const deviceIdChecked = document.getElementById("requestType2").checked;
+
+  let userIdOrDeviceId = document.getElementById("userIdOrDeviceId").value;
+
+  let userId;
+  let deviceId;
+
   console.log("userId", userId);
-  if (userId === "" || userId === null) {
+  if ((userIdOrDeviceId === "" || userIdOrDeviceId === null) && userIdChecked) {
     userId = peerId || generatePeerId();
+    document.getElementById("userIdOrDeviceId").value = userId;
   }
 
-  document.getElementById("userId").value = userId;
-  const requestStreamId = generateSessionId();
+  if (
+    deviceIdChecked &&
+    (userIdOrDeviceId === "" || userIdOrDeviceId === null)
+  ) {
+    deviceId = generatePeerId();
+    document.getElementById("userIdOrDeviceId").value = deviceId;
+  }
+
+  // validate inputs clientId,fleetId, userId or deviceId and sessionId
+  if (
+    (!clientId || !fleetId) &&
+    userIdChecked &&
+    !userId &&
+    deviceIdChecked &&
+    !deviceId
+  ) {
+    alert("Please enter all required fields");
+    return;
+  }
 
   const token = await fetchToken({
     clientId,
     fleetId,
-    userId,
+    userId: userIdChecked ? userId : null,
+    deviceId: deviceIdChecked ? deviceId : null,
     requestStreamId,
   });
+  // save the token in localStore and retrieve it when needed
+  localStorage.setItem("token", token);
+  // const token = localStorage.getItem("token");
+  // console.log("token", token);
+  // const iceServers =
   await getIceServers();
   await startLocalStream();
   console.log("got token", token);
@@ -747,15 +796,8 @@ async function requestLiveStream() {
     });
   }
 
-  // listen to events from socket
-  socket.on("offer", (data) => {
-    console.log("received offer", data);
-    // handleOffer("dummy", data);
-  });
-
   socket.on("ping", (data) => {
     console.log("received ping", data);
-    // handleOffer("dummy", data);
   });
 
   socket.on("message", handleSocketMessages.bind({ socket }));
@@ -905,7 +947,13 @@ async function handleSocketMessages(arg, callback) {
   }
 }
 
-async function fetchToken({ clientId, fleetId, userId, requestStreamId }) {
+async function fetchToken({
+  clientId,
+  fleetId,
+  userId,
+  deviceId,
+  requestStreamId,
+}) {
   const response = await fetch(signalingServerUrl + "/token", {
     method: "POST",
     headers: {
@@ -915,8 +963,8 @@ async function fetchToken({ clientId, fleetId, userId, requestStreamId }) {
       clientId,
       fleetId,
       userId,
-      // deviceId,
-      requestStreamId: "streamId#1",
+      deviceId,
+      requestStreamId: requestStreamId || "streamId#1",
     }),
   });
   const { token } = await response.json();

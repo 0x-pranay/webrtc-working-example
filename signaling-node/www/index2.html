@@ -24,30 +24,48 @@
       placeholder="Enter Fleet ID"
       value="lmfleet003"
     /><br />
-
-    <label>UserId:</label>
-    <input type="text" id="userId" placeholder="Enter userId:" /><br />
-    <label>Target Device ID:</label>
+    <!-- Show a radio bution -->
+    <label>Request Type:</label>
+    <input
+      type="radio"
+      id="requestType"
+      name="requestType"
+      value="user"
+      checked
+    />
+    <label for="user">User</label>
+    <input type="radio" id="requestType2" name="requestType" value="device" />
+    <label for="device">Device</label>
+    <br />
+    <label>userId or deviceId:</label>
     <input
       type="text"
-      id="deviceId"
-      placeholder="Enter target Device ID"
-      value="864281042305442"
-    /><br />
-    <button id="requestLiveStream" onclick="requestLiveStream()">
-      Request Live Stream
-    </button>
-    <button
-      id="stopLiveStream"
-      onclick="stopLiveStream()"
-      style="display: none"
-    >
-      Stop Live Stream
-    </button>
+      id="userIdOrDeviceId"
+      placeholder="Enter userId or deviceId:"
+    />
+    <br />
+    <!-- <label>Target Device ID:</label> -->
+    <!-- <input -->
+    <!--   type="text" -->
+    <!--   id="deviceId" -->
+    <!--   placeholder="Enter target Device ID" -->
+    <!--   value="864281042305442" -->
+    <!-- /><br /> -->
+
+    <!-- <button id="requestLiveStream" onclick="requestLiveStream()"> -->
+    <!--   Request Live Stream -->
+    <!-- </button> -->
+    <!-- <button -->
+    <!--   id="stopLiveStream" -->
+    <!--   onclick="stopLiveStream()" -->
+    <!--   style="display: none" -->
+    <!-- > -->
+    <!--   Stop Live Stream -->
+    <!-- </button> -->
     <!-- <p>Session ID: <span id="sessionId"></span></p> -->
 
     <div id="sessionControls">
-      <label for="sessionIdInput">Session ID:</label>
+      <label for="sessionIdInput">Or Join a session</label>
       <input
         type="text"
         id="sessionIdInput"
@@ -58,7 +76,7 @@
     </div>
 
     <div id="controls">
-      <button id="startStopButton">Start Stream</button>
+      <!-- <button id="startStopButton">Start Stream</button> -->
       <button id="toggleAudioButton">Disable Audio</button>
       <button id="toggleVideoButton">Disable Video</button>
 
@@ -72,13 +90,13 @@
         <option value="1500">1.5 Mbit</option>
         <option value="2000">2 Mbit</option>
       </select>
-      <div class="box">
-        <span>Codec preferences:</span>
-        <select id="codecPreferences" disabled>
-          <option selected value="">Default</option>
-        </select>
-        <div id="actualCodec"></div>
-      </div>
+      <!-- <div class="box"> -->
+      <!--   <span>Codec preferences:</span> -->
+      <!--   <select id="codecPreferences" disabled> -->
+      <!--     <option selected value="">Default</option> -->
+      <!--   </select> -->
+      <!--   <div id="actualCodec"></div> -->
+      <!-- </div> -->
     </div>
 
     <h2>Local Video</h2>
