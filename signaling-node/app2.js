@@ -96,7 +96,7 @@ io.on("connection", (socket) => {
 });
 
 async function handleSocketMessages(arg, callback) {
-  console.log("message received", arg);
+  // console.log("message received", arg);
   console.log("message received", {
     peerId: this.socket.peerId,
     user: this.socket.user,
@@ -134,7 +134,7 @@ async function handleSocketMessages(arg, callback) {
       if (peer) {
         await peer.handleAnswer(payload);
       }
-      console.log("peer not found", peerId, peer);
+      console.log("peer not found", peerId);
       break;
     case "ice-candidate":
       session = sessionManager.getOrCreateSession(requestStreamId);

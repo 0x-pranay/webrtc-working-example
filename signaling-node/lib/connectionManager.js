@@ -43,7 +43,7 @@ class PeerConnection {
 
   onIceCandidate = (event) => {
     if (event.candidate) {
-      console.log("sending ice candidate", event.candidate.candidate);
+      // console.log("sending ice candidate", event.candidate.candidate);
       // Send the candidate to the remote peer
       this.socket.emit("message", {
         type: "ice-candidate",
@@ -61,6 +61,7 @@ class PeerConnection {
       peerId: this.peerId,
       isDevice: this.isDevice,
       eventTrack: event.track,
+      kind: event.track?.kind,
     });
 
     this.tracks[event.track.id] = event.track;
@@ -157,41 +158,89 @@ class PeerConnection {
     });
   };
 
-  async createOffer() {
+  handleTracks() {
+    // TODO:
+    // 1. Device can send audio and video to web clients
+    // 2. Device can receive audio from web clients
+    // 3. Web clients can send audio
+    // 4. Web clients can receive audio and video from device
+    // 5. Web clients can receive audio from other web clients
+    // 6. Add tracks of old peers to the newly connected peer
+
     if (this.isDevice) {
-      for (let i = 0; i < MAX_WEB_CLIENTS; i++) {
-        // receive audio from web clients
-        this.pc.addTransceiver("audio", { direction: "sendonly" }); // audio from webclient
-        // temp. receive video from web clients
-        //  this.pc.addTransceiver("video", { direction: "recvonly" });
-      }
-      // send auid and video to web clients
-      this.pc.addTransceiver("audio", { direction: "recvonly" }); // from device
-      this.pc.addTransceiver("video", { direction: "recvonly" });
-    } else {
-      this.pc.addTransceiver("video", { direction: "sendonly" });
-      this.pc.addTransceiver("audio", { direction: "sendonly" });
-
+      // #1
       this.pc.addTransceiver("audio", { direction: "recvonly" });
-
-      // for (let i = 0; i < MAX_WEB_CLIENTS - 1; i++) {
-      //   // receive audio from web clients
+      this.pc.addTransceiver("video", { direction: "recvonly" });
+      // #2
+      // for (let i = 0; i < MAX_WEB_CLIENTS; i++) {
       //   this.pc.addTransceiver("audio", { direction: "sendonly" });
-      //   // temp. receive video from web clients
-      //   // this.pc.addTransceiver("video", { direction: "recvonly" });
       // }
+
+      // for one web-client
+      this.pc.addTransceiver("audio", { direction: "sendonly" });
     }
+
+    if (!this.isDevice) {
+      this.pc.addTransceiver("audio", { direction: "recvonly" }); // audio from webclient
+      this.pc.addTransceiver("audio", { direction: "sendonly" }); // audio from webclient
+      this.pc.addTransceiver("video", { direction: "sendonly" }); // video from webclient
+    }
+
+    // if (this.isDevice) {
+    //   for (let i = 0; i < MAX_WEB_CLIENTS; i++) {
+    //     // receive audio from web clients
+    //     this.pc.addTransceiver("audio", { direction: "sendonly" }); // audio from webclient
+    //     // temp. receive video from web clients
+    //     // this.pc.addTransceiver("video", { direction: "recvonly" });
+    //   }
+    //   // send auid and video to web clients
+    //   this.pc.addTransceiver("audio", { direction: "sendrecv" }); // from device
+    //   this.pc.addTransceiver("video", { direction: "sendrecv" });
+    // } else {
+    //   this.pc.addTransceiver("video", { direction: "sendonly" });
+    //   this.pc.addTransceiver("audio", { direction: "sendonly" });
+    //
+    //   // for (let i = 0; i < MAX_WEB_CLIENTS - 1; i++) {
+    //   //   // receive audio from web clients
+    //   //   this.pc.addTransceiver("audio", { direction: "sendonly" });
+    //   //   // temp. receive video from web clients
+    //   //   // this.pc.addTransceiver("video", { direction: "recvonly" });
+    //   // }
+    //   this.pc.addTransceiver("audio", { direction: "recvonly" });
+    // }
 
     // add the existing tracks
     this.session.peers.forEach((peer, targetPeerId) => {
       if (targetPeerId === this.peerId) {
         return;
       }
-      for (const [trackId, track] of Object.entries(peer.tracks)) {
-        this.pc.addTrack(track);
+
+      if (this.isDevice) {
+        // device doesn't need tracks of other peers
+        for (const [_, track] of Object.entries(peer.tracks)) {
+          // this.pc.addTrack(track);
+          // using transceivers
+        }
+
+        // device sends its tracks to other peers
+        for (const [_, track] of Object.entries(this.tracks)) {
+          peer.pc.addTrack(track);
+        }
+      } else {
+        // webclients need tracks from other all peers
+        for (const [_, track] of Object.entries(peer.tracks)) {
+          this.pc.addTrack(track);
+        }
+
+        // webclients send their tracks to other webclients only
+        for (const [_, track] of Object.entries(this.tracks)) {
+          !peer.isDevice && peer.pc.addTrack(track);
+        }
       }
     });
+  }
 
+  addDummyTracks() {
     // if (this.isDevice) {
     //   const audioSource = new RTCAudioSource();
     //   const audioTrack = audioSource.createTrack();
@@ -204,6 +253,10 @@ class PeerConnection {
     //   this.pc.addTrack(audioTrack);
     //   this.pc.addTrack(videoTrack);
     // }
+  }
+
+  async createOffer() {
+    this.handleTracks();
 
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
@@ -402,8 +455,8 @@ class Session {
         return peer.toJSON();
       }),
       peerCount: this.peers.size,
-      devicePeeers: this.getDevicePeers(),
-      webClientPeers: this.getWebClientPeers(),
+      // devicePeeers: this.getDevicePeers(),
+      // webClientPeers: this.getWebClientPeers(),
       starttime: this.starttime,
       endtime: this.endtime,
       activityLog: this.activityLog,
